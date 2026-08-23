@@ -1,0 +1,23 @@
+# Flutter
+FlutterApp/.dart_tool/
+FlutterApp/build/
+FlutterApp/.flutter-plugins
+FlutterApp/.flutter-plugins-dependencies
+
+# Python
+Backend/__pycache__/
+Backend/.venv/
+Backend/venv/
+Backend/*.pyc
+
+# Environment / secrets
+.env
+*.env
+
+# IDE
+.idea/
+.vscode/
+
+# OS files
+.DS_Store
+Thumbs.db
