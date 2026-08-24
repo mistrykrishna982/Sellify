@@ -1,7 +1,10 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
-import 'EmailOtpScreen.dart';
 import 'EmailOtpScreen.dart';
 
 class EditProfileScreen extends StatefulWidget {
@@ -20,8 +23,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
   String originalEmail = "";
   String userRole = "";
 
+
+  String? profileImageUrl;
+  File? selectedProfileImage;
+
+
   bool isLoading = true;
   bool isSaving = false;
+
 
   @override
   void initState() {
@@ -67,6 +76,8 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
 
         originalEmail = result["email"] ?? "";
         userRole = result["role"] ?? "USER";
+
+        profileImageUrl = result["profile_image"];
 
         isLoading = false;
       });
@@ -269,6 +280,32 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     }
   }
 
+
+  // =========================================================
+  // add image picker fun
+  // =========================================================
+
+  Future<void> pickProfileImage() async {
+
+    final ImagePicker picker = ImagePicker();
+
+    final XFile? image = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 85,
+      maxWidth: 1200,
+      maxHeight: 1200,
+    );
+
+    if (image == null) {
+      return;
+    }
+
+    setState(() {
+      selectedProfileImage = File(image.path);
+    });
+  }
+
+
   // =========================================================
   // UPDATE PROFILE
   // =========================================================
@@ -301,6 +338,14 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
         phone: phone,
         location: location,
       );
+
+      //upload profile image if user selected one
+      if (selectedProfileImage != null) {
+        await ApiService.uploadProfileImage(
+          userId: userId,
+          image: selectedProfileImage!,
+        );
+      }
 
       // Update local storage
       await AuthService.updateProfile(
@@ -461,24 +506,86 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
               // =================================================
 
               Center(
-                child: Container(
-                  height: 100,
-                  width: 100,
+                child: GestureDetector(
+                  onTap: pickProfileImage,
 
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade50,
-                    shape: BoxShape.circle,
+                  child: Stack(
+                    alignment: Alignment.bottomRight,
 
-                    border: Border.all(
-                      color: Colors.blue.shade200,
-                      width: 3,
-                    ),
-                  ),
+                    children: [
 
-                  child: Icon(
-                    Icons.person_rounded,
-                    size: 60,
-                    color: Colors.blue.shade700,
+                      Container(
+                        height: 100,
+                        width: 100,
+
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          shape: BoxShape.circle,
+
+                          border: Border.all(
+                            color: Colors.blue.shade200,
+                            width: 3,
+                          ),
+
+                          image: selectedProfileImage != null
+                              ? DecorationImage(
+                            image: FileImage(
+                              selectedProfileImage!,
+                            ),
+                            fit: BoxFit.cover,
+                          )
+                              : null,
+                        ),
+
+                        child: selectedProfileImage == null
+                            ? (
+                            profileImageUrl != null &&
+                                profileImageUrl!.isNotEmpty
+                                ? ClipOval(
+                              child: Image.network(
+                                "${ApiService.baseUrl}$profileImageUrl",
+                                width: 100,
+                                height: 100,
+                                fit: BoxFit.cover,
+                                errorBuilder:
+                                    (context, error, stackTrace) {
+                                  return Icon(
+                                    Icons.person_rounded,
+                                    size: 60,
+                                    color: Colors.blue.shade700,
+                                  );
+                                },
+                              ),
+                            )
+                                : Icon(
+                              Icons.person_rounded,
+                              size: 60,
+                              color: Colors.blue.shade700,
+                            )
+                        )
+                            : null,
+                      ),
+
+                      Container(
+                        height: 34,
+                        width: 34,
+
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade700,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Colors.white,
+                            width: 2,
+                          ),
+                        ),
+
+                        child: const Icon(
+                          Icons.camera_alt_outlined,
+                          color: Colors.white,
+                          size: 18,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),

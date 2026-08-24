@@ -1,9 +1,16 @@
 import os
 import uuid
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
-from pydantic import BaseModel, EmailStr
+from fastapi import (
+    APIRouter,
+    HTTPException,
+    UploadFile,
+    File,
+)
+
 from sqlalchemy import text
+from pydantic import BaseModel, EmailStr
+
 from pwdlib import PasswordHash
 
 from database import engine
@@ -17,6 +24,8 @@ from schemas.profile import (
 
 from services.email_service import send_email_change_otp
 from utils.otp import generate_otp, hash_otp, verify_otp
+
+
 router = APIRouter()
 
 password_hash = PasswordHash.recommended()
@@ -173,6 +182,7 @@ def login(user: LoginRequest):
 def get_profile(user_id: int):
 
     try:
+
         with engine.connect() as connection:
 
             result = connection.execute(
@@ -208,26 +218,25 @@ def get_profile(user_id: int):
                 "name": user.U_NAME,
                 "email": user.EMAIL,
                 "role": user.ROLE,
-                "phone": user.PHONE or "",
-                "location": user.LOCATION or "",
-                "profile_image": user.PROFILE_IMAGE
+                "phone": user.PHONE,
+                "location": user.LOCATION,
+                "profile_image": user.PROFILE_IMAGE,
             }
 
     except HTTPException:
         raise
 
-    except Exception:
+    except Exception as e:
         raise HTTPException(
             status_code=500,
-            detail="Failed to load profile"
+            detail=str(e)
         )
-
 
 
 @router.post("/profile/{user_id}/image")
 async def upload_profile_image(
     user_id: int,
-    image: UploadFile = File(...)
+    file: UploadFile = File(...)
 ):
     try:
 
@@ -262,11 +271,14 @@ async def upload_profile_image(
 
         allowed_types = {
             "image/jpeg": ".jpg",
+            "image/jpg": ".jpg",
             "image/png": ".png",
             "image/webp": ".webp",
         }
 
-        if image.content_type not in allowed_types:
+        content_type = (file.content_type or "").lower()
+
+        if content_type not in allowed_types:
             raise HTTPException(
                 status_code=400,
                 detail="Only JPG, PNG and WEBP images are allowed"
@@ -276,7 +288,7 @@ async def upload_profile_image(
         # READ FILE
         # =====================================================
 
-        image_data = await image.read()
+        image_data = await file.read()
 
         # Maximum 5 MB
         max_size = 5 * 1024 * 1024
@@ -308,7 +320,7 @@ async def upload_profile_image(
         # GENERATE SAFE RANDOM FILE NAME
         # =====================================================
 
-        extension = allowed_types[image.content_type]
+        extension = allowed_types[content_type]
 
         filename = f"{uuid.uuid4().hex}{extension}"
 
@@ -321,8 +333,8 @@ async def upload_profile_image(
         # SAVE IMAGE
         # =====================================================
 
-        with open(file_path, "wb") as file:
-            file.write(image_data)
+        with open(file_path, "wb") as output_file:
+            output_file.write(image_data)
 
         # =====================================================
         # IMAGE URL
@@ -348,6 +360,10 @@ async def upload_profile_image(
                 }
             )
 
+        # =====================================================
+        # RETURN RESPONSE
+        # =====================================================
+
         return {
             "message": "Profile image updated successfully",
             "profile_image": image_url
@@ -362,7 +378,6 @@ async def upload_profile_image(
             status_code=500,
             detail=str(e)
         )
-
 
 
 

@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'LoginScreen.dart';
 import 'EditProfileScreen.dart';
@@ -18,6 +20,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String userName = "";
   String userEmail = "";
   String userRole = "";
+  String? profileImageUrl;
 
   @override
   void initState() {
@@ -30,32 +33,55 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // =========================================================
 
   Future<void> loadUser() async {
-
     final loggedIn = await AuthService.isLoggedIn();
 
     if (!mounted) return;
 
-    if (loggedIn) {
-
-      final name = await AuthService.getName();
-      final email = await AuthService.getEmail();
-      final role = await AuthService.getRole();
-
-      setState(() {
-        isLoggedIn = true;
-        userName = name ?? "User";
-        userEmail = email ?? "";
-        userRole = role ?? "User";
-        isLoading = false;
-      });
-
-    } else {
-
+    if (!loggedIn) {
       setState(() {
         isLoggedIn = false;
+        userName = "";
+        userEmail = "";
+        userRole = "";
+        profileImageUrl = null;
         isLoading = false;
       });
+
+      return;
     }
+
+    // First load basic data from local storage
+    final name = await AuthService.getName();
+    final email = await AuthService.getEmail();
+    final role = await AuthService.getRole();
+
+    String? imageUrl;
+
+    // Get latest profile data from backend
+    try {
+      final userId = await AuthService.getUserId();
+
+      if (userId != null && userId.isNotEmpty) {
+        final result = await ApiService.getProfile(
+          userId: userId,
+        );
+
+        imageUrl = result["profile_image"]?.toString();
+      }
+    } catch (e) {
+      debugPrint("Failed to load profile image: $e");
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      isLoggedIn = true;
+      userName = name ?? "User";
+      userEmail = email ?? "";
+      userRole = role ?? "User";
+      profileImageUrl = imageUrl;
+      isLoading = false;
+    });
   }
 
   // =========================================================
@@ -405,10 +431,47 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ),
                   ),
 
-                  child: Icon(
-                    Icons.person_rounded,
-                    size: 65,
-                    color: Colors.blue.shade700,
+                  child: ClipOval(
+                    child: profileImageUrl != null &&
+                        profileImageUrl!.isNotEmpty
+                        ? Image.network(
+                      "${ApiService.baseUrl}$profileImageUrl",
+
+                      width: 110,
+                      height: 110,
+
+                      fit: BoxFit.cover,
+
+                      // Forces Flutter to rebuild the image when URL changes
+                      key: ValueKey(profileImageUrl),
+
+                      loadingBuilder:
+                          (context, child, loadingProgress) {
+                        if (loadingProgress == null) {
+                          return child;
+                        }
+
+                        return const Center(
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                          ),
+                        );
+                      },
+
+                      errorBuilder:
+                          (context, error, stackTrace) {
+                        return Icon(
+                          Icons.person_rounded,
+                          size: 65,
+                          color: Colors.blue.shade700,
+                        );
+                      },
+                    )
+                        : Icon(
+                      Icons.person_rounded,
+                      size: 65,
+                      color: Colors.blue.shade700,
+                    ),
                   ),
                 ),
 
@@ -585,6 +648,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         userName = "";
                         userEmail = "";
                         userRole = "";
+                        profileImageUrl = null;
                       });
 
                       ScaffoldMessenger.of(context).showSnackBar(

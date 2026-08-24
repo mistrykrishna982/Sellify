@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 
 class ApiService {
   static const String baseUrl = "http://192.168.155.48:8000";
@@ -158,4 +160,74 @@ class ApiService {
   }
 
 
+  static Future<Map<String, dynamic>> uploadProfileImage({
+    required String userId,
+    required File image,
+  }) async {
+    final uri = Uri.parse("$baseUrl/profile/$userId/image");
+
+    final extension = image.path.split('.').last.toLowerCase();
+
+    String mimeType;
+
+    switch (extension) {
+      case "jpg":
+      case "jpeg":
+        mimeType = "jpeg";
+        break;
+
+      case "png":
+        mimeType = "png";
+        break;
+
+      case "webp":
+        mimeType = "webp";
+        break;
+
+      default:
+        throw Exception(
+          "Only JPG, PNG and WEBP images are allowed",
+        );
+    }
+
+    final request = http.MultipartRequest(
+      "POST",
+      uri,
+    );
+
+    request.files.add(
+      await http.MultipartFile.fromPath(
+        "file",
+        image.path,
+        contentType: MediaType("image", mimeType),
+      ),
+    );
+
+    final streamedResponse = await request.send();
+
+    final response = await http.Response.fromStream(
+      streamedResponse,
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception(
+        "Invalid server response: ${response.body}",
+      );
+    }
+
+    if (response.statusCode < 200 ||
+        response.statusCode >= 300) {
+      throw Exception(
+        data["detail"] ??
+            data["message"] ??
+            "Failed to upload profile image",
+      );
+    }
+
+    return Map<String, dynamic>.from(data);
+  }
 }
