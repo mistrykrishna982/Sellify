@@ -1,0 +1,58 @@
+category,brand,model,age,condition,ram,storage,processor,price
+Mobile Phones,Samsung,Galaxy S21,1,Excellent,8 GB,128 GB,,28000
+Mobile Phones,Samsung,Galaxy S21,2,Good,8 GB,128 GB,,23000
+Mobile Phones,Samsung,Galaxy S22,1,Excellent,8 GB,128 GB,,36000
+Mobile Phones,Samsung,Galaxy S22,2,Good,8 GB,128 GB,,30000
+Mobile Phones,Apple,iPhone 12,2,Excellent,4 GB,128 GB,,38000
+Mobile Phones,Apple,iPhone 12,3,Good,4 GB,128 GB,,32000
+Mobile Phones,Apple,iPhone 13,1,Excellent,4 GB,128 GB,,48000
+Mobile Phones,Apple,iPhone 13,2,Good,4 GB,128 GB,,41000
+Mobile Phones,OnePlus,9 Pro,2,Good,8 GB,256 GB,,26000
+Mobile Phones,OnePlus,10 Pro,1,Excellent,8 GB,256 GB,,35000
+Mobile Phones,Xiaomi,Mi 11,2,Good,8 GB,128 GB,,19000
+Mobile Phones,Realme,GT,2,Good,8 GB,128 GB,,18000
+Mobile Phones,Vivo,V23,2,Good,8 GB,128 GB,,21000
+Mobile Phones,Oppo,Reno 7,2,Good,8 GB,128 GB,,20000
+Laptops,Dell,Inspiron 15,2,Good,8 GB,512 GB,i5,38000
+Laptops,Dell,Inspiron 15,3,Good,8 GB,512 GB,i5,32000
+Laptops,Dell,Inspiron 15,1,Excellent,16 GB,512 GB,i5,48000
+Laptops,HP,Pavilion 15,2,Good,8 GB,512 GB,i5,40000
+Laptops,HP,Pavilion 15,3,Good,8 GB,512 GB,i5,34000
+Laptops,HP,Pavilion 15,1,Excellent,16 GB,512 GB,i7,55000
+Laptops,Lenovo,IdeaPad 3,2,Good,8 GB,512 GB,i5,35000
+Laptops,Lenovo,IdeaPad 5,1,Excellent,16 GB,512 GB,i5,47000
+Laptops,Lenovo,ThinkPad,3,Good,16 GB,512 GB,i5,42000
+Laptops,Acer,Aspire 5,2,Good,8 GB,512 GB,i5,33000
+Laptops,Asus,VivoBook,2,Good,8 GB,512 GB,i5,36000
+Laptops,Asus,VivoBook,1,Excellent,16 GB,512 GB,i7,50000
+Furniture,IKEA,Office Chair,2,Good,,, ,4500
+Furniture,IKEA,Office Chair,1,Excellent,,, ,6500
+Furniture,,Wooden Table,3,Good,,, ,7000
+Furniture,,Wooden Table,5,Good,,, ,4500
+Furniture,,Dining Table,2,Excellent,,, ,12000
+Furniture,,Dining Table,4,Good,,, ,8000
+Furniture,,Sofa,3,Good,,, ,15000
+Furniture,,Sofa,6,Good,,, ,9000
+Furniture,,Bed,3,Good,,, ,11000
+Furniture,,Bed,7,Good,,, ,6500
+Furniture,,Study Desk,2,Good,,, ,6000
+Furniture,,Study Desk,1,Excellent,,, ,8500
+Bicycles,Hero,Mountain Bike,2,Good,,, ,9000
+Bicycles,Hero,Mountain Bike,4,Good,,, ,6000
+Bicycles,Firefox,Road Bike,1,Excellent,,, ,22000
+Bicycles,Firefox,Road Bike,3,Good,,, ,16000
+Bicycles,Montra,Hybrid Bike,2,Good,,, ,12000
+Bicycles,Montra,Hybrid Bike,4,Good,,, ,8000
+Bicycles,Hercules,City Bike,2,Good,,, ,7500
+Bicycles,Hercules,City Bike,5,Good,,, ,5000
+Electronics,Philips,Speaker,2,Good,,, ,3000
+Electronics,JBL,Speaker,1,Excellent,,, ,5000
+Electronics,JBL,Speaker,3,Good,,, ,3500
+Electronics,Sony,Headphones,2,Good,,, ,2500
+Electronics,Sony,Headphones,1,Excellent,,, ,4000
+Electronics,Boat,Headphones,2,Good,,, ,1800
+Electronics,Canon,Digital Camera,3,Good,,, ,18000
+Electronics,Canon,Digital Camera,5,Good,,, ,12000
+Electronics,Accu-Chek,Glucose Meter,2,Good,,, ,1500
+Electronics,Accu-Chek,Glucose Meter,1,Excellent,,, ,2200
+Electronics,OneTouch,Glucose Meter,3,Good,,, ,1200

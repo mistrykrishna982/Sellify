@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:sellify/screens/registerScreen.dart';
-import 'package:sellify/screens/LoginScreen.dart';
 import 'package:sellify/screens/HomeScreen.dart';
 
 

@@ -1,3 +1,8 @@
+from services.email_service import (
+    send_email_change_otp,
+    send_forgot_password_otp,
+)
+
 import os
 import uuid
 
@@ -22,7 +27,6 @@ from schemas.profile import (
     VerifyEmailChange,
 )
 
-from services.email_service import send_email_change_otp
 from utils.otp import generate_otp, hash_otp, verify_otp
 
 
@@ -42,6 +46,20 @@ class RegisterRequest(BaseModel):
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class VerifyForgotPasswordRequest(BaseModel):
+    email: EmailStr
+    otp: str
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    new_password: str
 
 
 @router.post("/register")
@@ -176,6 +194,300 @@ def login(user: LoginRequest):
             status_code=500,
             detail=str(e)
         )
+
+
+@router.post("/forgot-password/request")
+def forgot_password_request(request: ForgotPasswordRequest):
+
+    try:
+        with engine.begin() as connection:
+
+            # Find user by email
+            result = connection.execute(
+                text("""
+                    SELECT U_ID
+                    FROM USERS
+                    WHERE EMAIL = :email
+                """),
+                {
+                    "email": request.email
+                }
+            )
+
+            user = result.fetchone()
+
+            # Do not reveal whether email exists
+            if not user:
+                return {
+                    "message": "If an account exists, an OTP has been sent."
+                }
+
+            user_id = user.U_ID
+
+            # Delete previous unused OTPs
+            connection.execute(
+                text("""
+                    DELETE FROM forgot_password_otps
+                    WHERE u_id = :user_id
+                      AND verified = 0
+                """),
+                {
+                    "user_id": user_id
+                }
+            )
+
+            # Generate new OTP
+            otp = generate_otp()
+
+            # Hash OTP before storing
+            otp_hash = hash_otp(otp)
+
+            expires_at = datetime.utcnow() + timedelta(minutes=10)
+
+            # Save OTP
+            connection.execute(
+                text("""
+                    INSERT INTO forgot_password_otps
+                    (
+                        u_id,
+                        otp_hash,
+                        expires_at,
+                        verified
+                    )
+                    VALUES
+                    (
+                        :user_id,
+                        :otp_hash,
+                        :expires_at,
+                        0
+                    )
+                """),
+                {
+                    "user_id": user_id,
+                    "otp_hash": otp_hash,
+                    "expires_at": expires_at
+                }
+            )
+
+            # Send OTP
+            send_forgot_password_otp(
+                recipient_email=request.email,
+                otp=otp
+            )
+
+            return {
+                "message": "If an account exists, an OTP has been sent."
+            }
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+
+
+@router.post("/forgot-password/verify")
+def forgot_password_verify(
+    request: VerifyForgotPasswordRequest
+):
+
+    try:
+        with engine.begin() as connection:
+
+            # Find user by email
+            user_result = connection.execute(
+                text("""
+                    SELECT U_ID
+                    FROM USERS
+                    WHERE EMAIL = :email
+                """),
+                {
+                    "email": request.email
+                }
+            )
+
+            user = user_result.fetchone()
+
+            if not user:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid email or OTP."
+                )
+
+            # Get latest OTP for this user
+            otp_result = connection.execute(
+                text("""
+                    SELECT
+                        id,
+                        otp_hash,
+                        expires_at,
+                        verified
+                    FROM forgot_password_otps
+                    WHERE u_id = :user_id
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """),
+                {
+                    "user_id": user.U_ID
+                }
+            )
+
+            otp_record = otp_result.fetchone()
+
+            if not otp_record:
+                raise HTTPException(
+                    status_code=400,
+                    detail="OTP not found."
+                )
+
+            # Check if OTP was already used
+            if otp_record.verified:
+                raise HTTPException(
+                    status_code=400,
+                    detail="OTP already used."
+                )
+
+            # Check expiration
+            if datetime.utcnow() > otp_record.expires_at:
+                raise HTTPException(
+                    status_code=400,
+                    detail="OTP has expired."
+                )
+
+            # Verify OTP
+            if not verify_otp(
+                request.otp,
+                otp_record.otp_hash
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid OTP."
+                )
+
+            # Mark OTP as verified
+            connection.execute(
+                text("""
+                    UPDATE forgot_password_otps
+                    SET verified = 1
+                    WHERE id = :otp_id
+                """),
+                {
+                    "otp_id": otp_record.id
+                }
+            )
+
+            return {
+                "message": "OTP verified successfully."
+            }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+@router.post("/forgot-password/reset")
+def forgot_password_reset(
+    request: ResetPasswordRequest
+):
+
+    try:
+        with engine.begin() as connection:
+
+            # Find user
+            user_result = connection.execute(
+                text("""
+                    SELECT U_ID
+                    FROM USERS
+                    WHERE EMAIL = :email
+                """),
+                {
+                    "email": request.email
+                }
+            )
+
+            user = user_result.fetchone()
+
+            if not user:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid request."
+                )
+
+            # Check that latest OTP was verified
+            otp_result = connection.execute(
+                text("""
+                    SELECT id, verified
+                    FROM forgot_password_otps
+                    WHERE u_id = :user_id
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                """),
+                {
+                    "user_id": user.U_ID
+                }
+            )
+
+            otp_record = otp_result.fetchone()
+
+            if not otp_record:
+                raise HTTPException(
+                    status_code=400,
+                    detail="OTP verification required."
+                )
+
+            if not otp_record.verified:
+                raise HTTPException(
+                    status_code=400,
+                    detail="OTP verification required."
+                )
+
+            # Hash new password
+            hashed_password = password_hash.hash(
+                request.new_password
+            )
+
+            # Update password
+            connection.execute(
+                text("""
+                    UPDATE USERS
+                    SET PASSWORD = :password
+                    WHERE U_ID = :user_id
+                """),
+                {
+                    "password": hashed_password,
+                    "user_id": user.U_ID
+                }
+            )
+
+            # Consume the verified OTP
+            connection.execute(
+                text("""
+                    DELETE FROM forgot_password_otps
+                    WHERE id = :otp_id
+                """),
+                {
+                    "otp_id": otp_record.id
+                }
+            )
+
+            return {
+                "message": "Password reset successfully."
+            }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
 
 
 @router.get("/profile/{user_id}")

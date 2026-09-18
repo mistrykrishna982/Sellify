@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import 'MyProductsScreen.dart';
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'LoginScreen.dart';
@@ -603,7 +603,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   icon: Icons.inventory_2_outlined,
                   title: "My Products",
                   onTap: () {
-                    // Later
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const MyProductsScreen(),
+                      ),
+                    );
                   },
                 ),
 

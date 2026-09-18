@@ -3,6 +3,7 @@ import '../services/api_service.dart';
 import '../services/auth_service.dart';
 import 'HomeScreen.dart';
 import 'registerScreen.dart';
+import 'ForgotPasswordScreen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -292,7 +293,12 @@ class _LoginScreenState extends State<LoginScreen> {
 
                 child: TextButton(
                   onPressed: () {
-                    // Forgot password will be added later.
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const ForgotPasswordScreen(),
+                      ),
+                    );
                   },
 
                   child: const Text(

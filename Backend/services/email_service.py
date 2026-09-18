@@ -60,3 +60,61 @@ Sellify
         server.send_message(message)
 
     print("EMAIL SENT SUCCESSFULLY")
+
+
+
+
+def send_forgot_password_otp(
+    recipient_email: str,
+    otp: str,
+):
+    smtp_host = os.getenv("SMTP_HOST")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_username = os.getenv("SMTP_USERNAME")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+
+    print("========== FORGOT PASSWORD OTP ==========")
+    print("SMTP HOST:", smtp_host)
+    print("SMTP PORT:", smtp_port)
+    print("SMTP USERNAME:", smtp_username)
+    print("RECIPIENT:", recipient_email)
+    print("OTP:", otp)
+    print("==========================================")
+
+    message = EmailMessage()
+
+    message["Subject"] = "Sellify - Password Reset OTP"
+    message["From"] = smtp_username
+    message["To"] = recipient_email
+
+    message.set_content(
+        f"""
+Hello,
+
+You requested to reset your Sellify password.
+
+Your password reset verification code is:
+
+{otp}
+
+This OTP will expire in 10 minutes.
+
+If you did not request a password reset, please ignore this email.
+
+Sellify
+"""
+    )
+
+    with smtplib.SMTP(smtp_host, smtp_port) as server:
+        server.set_debuglevel(1)
+
+        server.starttls()
+
+        server.login(
+            smtp_username,
+            smtp_password,
+        )
+
+        server.send_message(message)
+
+    print("FORGOT PASSWORD OTP SENT SUCCESSFULLY")

@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:sellify/screens/LoginScreen.dart';
 import 'package:sellify/screens/ProfileScreen.dart';
 import 'package:sellify/screens/registerScreen.dart';
+import 'package:sellify/screens/AddProductScreen.dart';
+import 'package:sellify/services/api_service.dart';
+import 'package:sellify/services/auth_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -16,26 +19,15 @@ class _HomeScreenState extends State<HomeScreen> {
   int selectedIndex = 0;
 
 
-  final List<Map<String, dynamic>> products = const [
-    {
-      "name": "iPhone 13",
-      "price": "₹45,000",
-      "category": "Mobiles",
-      "location": "Ahmedabad",
-    },
-    {
-      "name": "Dell Laptop",
-      "price": "₹38,000",
-      "category": "Laptops",
-      "location": "Ahmedabad",
-    },
-    {
-      "name": "Study Table",
-      "price": "₹3,500",
-      "category": "Furniture",
-      "location": "Ahmedabad",
-    },
-  ];
+  List<Map<String, dynamic>> products = [];
+  bool isLoadingProducts = true;
+  String? productsError;
+
+  @override
+  void initState() {
+    super.initState();
+    loadProducts();
+  }
 
   //login
   void requireLogin(BuildContext context) {
@@ -215,6 +207,47 @@ class _HomeScreenState extends State<HomeScreen> {
       },
     );
   }
+
+
+
+  Future<void> loadProducts() async {
+    try {
+      final userId = await AuthService.getUserId();
+
+      if (userId == null || userId.isEmpty) {
+        if (!mounted) return;
+
+        setState(() {
+          isLoadingProducts = false;
+          productsError = "Please login to view products.";
+        });
+
+        return;
+      }
+
+      final result = await ApiService.getProducts(
+        userId: userId,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        products = result;
+        isLoadingProducts = false;
+        productsError = null;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        isLoadingProducts = false;
+        productsError = e.toString();
+      });
+    }
+  }
+
+
+
 
  //home page
 
@@ -454,8 +487,18 @@ class _HomeScreenState extends State<HomeScreen> {
 
         elevation: 4,
 
-        onPressed: () {
-          requireLogin(context);
+        onPressed: () async {
+
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const AddProductScreen(),
+            ),
+          );
+
+          // Reload products when returning from Add Product
+          await loadProducts();
+
         },
 
         icon: const Icon(
@@ -610,11 +653,25 @@ class ProductCard extends StatelessWidget {
                 height: 190,
                 width: double.infinity,
 
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade100,
-                ),
+                color: Colors.grey.shade100,
 
-                child: const Icon(
+                child: product["image_path"] != null &&
+                    product["image_path"].toString().isNotEmpty
+                    ? Image.network(
+                  "${ApiService.baseUrl}/${product["image_path"]}",
+                  width: double.infinity,
+                  height: 190,
+                  fit: BoxFit.cover,
+
+                  errorBuilder: (context, error, stackTrace) {
+                    return const Icon(
+                      Icons.image_outlined,
+                      size: 65,
+                      color: Colors.grey,
+                    );
+                  },
+                )
+                    : const Icon(
                   Icons.image_outlined,
                   size: 65,
                   color: Colors.grey,
@@ -677,7 +734,7 @@ class ProductCard extends StatelessWidget {
                   ),
 
                   child: Text(
-                    product["category"],
+                    product["category"]?.toString() ?? "Unknown",
 
                     style: TextStyle(
                       fontSize: 11,
@@ -691,7 +748,7 @@ class ProductCard extends StatelessWidget {
 
                 // Product name
                 Text(
-                  product["name"],
+                  product["title"]?.toString() ?? "Untitled Product",
 
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -706,7 +763,7 @@ class ProductCard extends StatelessWidget {
 
                 // Price
                 Text(
-                  product["price"],
+                  "₹${product["price"]}",
 
                   style: TextStyle(
                     fontSize: 20,
@@ -730,7 +787,7 @@ class ProductCard extends StatelessWidget {
 
                     Expanded(
                       child: Text(
-                        product["location"],
+                        product["location"]?.toString() ?? "Location unavailable",
 
                         style: TextStyle(
                           color: Colors.grey.shade600,

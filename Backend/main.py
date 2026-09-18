@@ -2,7 +2,8 @@ from fastapi import FastAPI
 from database import engine
 from auth import router as auth_router
 from fastapi.staticfiles import StaticFiles
-
+from routes.products import router as products_router
+from routes.categories import router as categories_router
 
 app = FastAPI(
     title="Sellify API",
@@ -10,7 +11,12 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Routers
+app.include_router(auth_router)
+app.include_router(products_router)
+app.include_router(categories_router)
 
+# Uploaded files
 app.mount(
     "/uploads",
     StaticFiles(directory="uploads"),
@@ -36,6 +42,3 @@ def home():
             "message": "Database connection failed",
             "error": str(e)
         }
-
-
-app.include_router(auth_router)
