@@ -7,11 +7,13 @@ import '../services/api_service.dart';
 
 class ProductDetailsScreen extends StatefulWidget {
   final File image;
+  final List<File> allImages;
   final Map<String, dynamic> aiResult;
 
   const ProductDetailsScreen({
     super.key,
     required this.image,
+    required this.allImages,
     required this.aiResult,
   });
 
@@ -212,10 +214,9 @@ class _ProductDetailsScreenState
   }
 
 
-
   String generateProductTitle() {
-    final String category =
-    (widget.aiResult["category"] ?? "Product")
+    final String productType =
+    (widget.aiResult["product_type"] ?? "Product")
         .toString()
         .trim();
 
@@ -224,135 +225,34 @@ class _ProductDetailsScreenState
     final String ram = getAttributeValue("RAM");
     final String storage = getAttributeValue("Storage");
 
-    // MOBILE PHONES
-    if (category.toLowerCase().contains("mobile")) {
-      final List<String> parts = [];
+    final List<String> parts = [];
 
-      if (brand.isNotEmpty) {
-        parts.add(brand);
-      }
-
-      if (model.isNotEmpty) {
-        parts.add(model);
-      }
-
-      if (ram.isNotEmpty) {
-        parts.add(ram);
-      }
-
-      if (storage.isNotEmpty) {
-        parts.add(storage);
-      }
-
-      if (parts.isNotEmpty) {
-        return parts.join(" ");
-      }
-
-      return "Used Mobile Phone";
+    // BRAND
+    if (brand.isNotEmpty) {
+      parts.add(brand);
     }
 
-    // LAPTOPS
-    if (category.toLowerCase().contains("laptop")) {
-      final List<String> parts = [];
-
-      if (brand.isNotEmpty) {
-        parts.add(brand);
-      }
-
-      if (model.isNotEmpty) {
-        parts.add(model);
-      }
-
-      if (ram.isNotEmpty) {
-        parts.add(ram);
-      }
-
-      if (storage.isNotEmpty) {
-        parts.add(storage);
-      }
-
-      if (parts.isNotEmpty) {
-        return parts.join(" ");
-      }
-
-      return "Used Laptop";
+    // MODEL
+    if (model.isNotEmpty) {
+      parts.add(model);
     }
 
-    // FURNITURE
-    if (category.toLowerCase().contains("furniture")) {
-      final String furnitureType =
-      getAttributeValue("Furniture Type");
-
-      final List<String> parts = [];
-
-      if (brand.isNotEmpty) {
-        parts.add(brand);
-      }
-
-      if (furnitureType.isNotEmpty) {
-        parts.add(furnitureType);
-      }
-
-      if (parts.isNotEmpty) {
-        return parts.join(" ");
-      }
-
-      return "Used Furniture";
+    // RAM
+    if (ram.isNotEmpty) {
+      parts.add(ram);
     }
 
-    // BICYCLES
-    if (category.toLowerCase().contains("bicycle")) {
-      final String bicycleType =
-      getAttributeValue("Bicycle Type");
-
-      final List<String> parts = [];
-
-      if (brand.isNotEmpty) {
-        parts.add(brand);
-      }
-
-      if (model.isNotEmpty) {
-        parts.add(model);
-      }
-
-      if (bicycleType.isNotEmpty) {
-        parts.add(bicycleType);
-      }
-
-      if (parts.isNotEmpty) {
-        return parts.join(" ");
-      }
-
-      return "Used Bicycle";
+    // STORAGE
+    if (storage.isNotEmpty) {
+      parts.add(storage);
     }
 
-    // ELECTRONICS
-    if (category.toLowerCase().contains("electronic")) {
-      final String deviceType =
-      getAttributeValue("Device Type");
-
-      final List<String> parts = [];
-
-      if (brand.isNotEmpty) {
-        parts.add(brand);
-      }
-
-      if (model.isNotEmpty) {
-        parts.add(model);
-      }
-
-      if (deviceType.isNotEmpty) {
-        parts.add(deviceType);
-      }
-
-      if (parts.isNotEmpty) {
-        return parts.join(" ");
-      }
-
-      return "Used Electronics";
+    // PRODUCT TYPE
+    if (parts.isNotEmpty) {
+      return parts.join(" ");
     }
 
-    return "Used $category";
+    return "Used $productType";
   }
 
 
@@ -584,6 +484,9 @@ class _ProductDetailsScreenState
       await ApiService.createProduct(
         userId: userId,
         categoryId: categoryId!,
+        productTypeId: int.parse(
+          widget.aiResult["product_type_id"].toString(),
+        ),
         title: generateProductTitle(),
         description: generateProductDescription(),
         condition: condition,
@@ -622,11 +525,8 @@ class _ProductDetailsScreenState
 
 
   Future<void> continueToNextStep() async {
-
     if (locationController.text.trim().isEmpty) {
-
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
             "Please enter your location",
@@ -637,14 +537,11 @@ class _ProductDetailsScreenState
       return;
     }
 
-
     if (!validateAttributes()) {
       return;
     }
 
-
-    // Get dynamic product attributes
-
+    // Get product attributes dynamically
     final String brand =
     getAttributeValue("Brand");
 
@@ -663,15 +560,11 @@ class _ProductDetailsScreenState
     final String ageText =
     getAttributeValue("Age");
 
-
     final int? age =
     int.tryParse(ageText);
 
-
     if (age == null) {
-
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
             "Please enter a valid product age",
@@ -682,23 +575,24 @@ class _ProductDetailsScreenState
       return;
     }
 
-
     setState(() {
       isPredictingPrice = true;
     });
 
-
     try {
-
       final String category =
           widget.aiResult["category"] ??
               "Electronics";
 
+      final String productType =
+      (widget.aiResult["product_type"] ?? "Unknown")
+          .toString()
+          .trim();
 
       final predictedPrice =
       await ApiService.predictPrice(
-
         category: category,
+        productType: productType,
         brand: brand,
         model: model,
         age: age,
@@ -708,33 +602,22 @@ class _ProductDetailsScreenState
         processor: processor,
       );
 
-
       if (!mounted) return;
 
       setState(() {
-        aiPrice =
-            predictedPrice;
-
-        isPredictingPrice =
-        false;
+        aiPrice = predictedPrice;
+        isPredictingPrice = false;
       });
 
-
       showPricePredictionDialog();
-
-
     } catch (e) {
-
       if (!mounted) return;
-
 
       setState(() {
         isPredictingPrice = false;
       });
 
-
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             "Failed to predict price: $e",
@@ -1014,21 +897,30 @@ class _ProductDetailsScreenState
 
             // IMAGE
 
+            // IMAGE
+
+            // IMAGES
+
             ClipRRect(
+              borderRadius: BorderRadius.circular(20),
 
-              borderRadius:
-              BorderRadius.circular(20),
-
-              child: Image.file(
-
-                widget.image,
-
-                width:
-                double.infinity,
+              child: SizedBox(
 
                 height: 220,
+                width: double.infinity,
 
-                fit: BoxFit.cover,
+                child: PageView.builder(
+                  itemCount: widget.allImages.length,
+
+                  itemBuilder: (context, index) {
+                    return Image.file(
+                      widget.allImages[index],
+                      width: double.infinity,
+                      height: 220,
+                      fit: BoxFit.cover,
+                    );
+                  },
+                ),
               ),
             ),
 

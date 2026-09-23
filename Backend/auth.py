@@ -5,7 +5,7 @@ from services.email_service import (
 
 import os
 import uuid
-
+import jwt
 from fastapi import (
     APIRouter,
     HTTPException,
@@ -19,7 +19,7 @@ from pydantic import BaseModel, EmailStr
 from pwdlib import PasswordHash
 
 from database import engine
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from schemas.profile import (
     UpdateProfileRequest,
@@ -32,8 +32,35 @@ from utils.otp import generate_otp, hash_otp, verify_otp
 
 router = APIRouter()
 
-password_hash = PasswordHash.recommended()
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 
+if not JWT_SECRET_KEY:
+    raise RuntimeError("JWT_SECRET_KEY is not set in the .env file")
+
+JWT_ALGORITHM = "HS256"
+
+JWT_EXPIRATION_MINUTES = 60
+
+
+def create_access_token(user_id: int, role: str):
+    expire = datetime.now(timezone.utc) + timedelta(
+        minutes=JWT_EXPIRATION_MINUTES
+    )
+
+    payload = {
+        "user_id": user_id,
+        "role": role,
+        "exp": expire
+    }
+
+    return jwt.encode(
+        payload,
+        JWT_SECRET_KEY,
+        algorithm=JWT_ALGORITHM
+    )
+
+
+password_hash = PasswordHash.recommended()
 
 class RegisterRequest(BaseModel):
     name: str
@@ -178,14 +205,20 @@ def login(user: LoginRequest):
                     detail="Invalid email or password"
                 )
 
+            token = create_access_token(
+                user_id=existing_user.U_ID,
+                role=existing_user.ROLE
+            )
+
             return {
                 "message": "Login successful",
                 "user_id": existing_user.U_ID,
                 "name": existing_user.U_NAME,
                 "email": existing_user.EMAIL,
-                "role": existing_user.ROLE
-            }
-
+                "role": existing_user.ROLE,
+                "access_token": token,
+                "token_type": "bearer"
+        }
     except HTTPException:
         raise
 

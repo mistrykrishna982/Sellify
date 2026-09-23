@@ -8,10 +8,11 @@ from services.price_service import predict_price
 from pydantic import BaseModel
 from sqlalchemy import text
 from database import engine
-
+from routes.unsupported_products import record_unsupported_product
 
 class PricePredictionRequest(BaseModel):
     category: str
+    product_type: str
     brand: str = ""
     model: str = ""
     age: int
@@ -26,6 +27,8 @@ class CreateProductRequest(BaseModel):
     user_id: int
 
     category_id: int
+
+    product_type_id: int
 
     title: str
 
@@ -185,6 +188,14 @@ async def analyze_product(
         )
 
 
+        # Record unsupported product request
+        if not ai_result["supported"]:
+
+            record_unsupported_product(
+                ai_result["unsupported_product_name"]
+            )
+
+
         return {
 
     "message": "AI analysis completed successfully",
@@ -204,6 +215,11 @@ async def analyze_product(
     "category_id": ai_result["category_id"],
 
     "confidence": ai_result["confidence"],
+
+     "supported": ai_result["supported"],
+
+    "unsupported_product_name":
+        ai_result["unsupported_product_name"],
 
     "predictions": ai_result["predictions"]
 
@@ -234,6 +250,7 @@ def predict_product_price(
 
         predicted_price = predict_price(
             category=data.category,
+            product_type=data.product_type,
             brand=data.brand,
             model=data.model,
             age=data.age,
@@ -337,16 +354,44 @@ def create_product(
                 )
 
 
+
+
+             # --------------------------------------------
+             # Check product type belongs to category
+             # --------------------------------------------
+
+            product_type_result = connection.execute(
+                text("""
+                    SELECT PRODUCT_TYPE_ID
+                    FROM PRODUCT_TYPES
+                    WHERE PRODUCT_TYPE_ID = :product_type_id
+                        AND C_ID = :category_id
+                """),
+                {
+                    "product_type_id": data.product_type_id,
+                    "category_id": data.category_id
+                }
+            )
+
+            product_type = product_type_result.fetchone()
+
+            if not product_type:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Selected product type does not belong to selected category"
+                )
+
             # --------------------------------------------
             # Insert product
             # --------------------------------------------
 
             product_result = connection.execute(
                 text("""
-                    INSERT INTO PRODUCTS
+                   INSERT INTO PRODUCTS
                     (
                         U_ID,
                         C_ID,
+                        PRODUCT_TYPE_ID,
                         TITLE,
                         DESCRIPTION,
                         `CONDITION`,
@@ -354,19 +399,20 @@ def create_product(
                         AI_PRICE,
                         LOCATION,
                         STATUS
-                    )
-                    VALUES
-                    (
-                        :user_id,
-                        :category_id,
-                        :title,
-                        :description,
-                        :condition,
-                        :price,
-                        :ai_price,
-                        :location,
-                        'ACTIVE'
-                    )
+                )
+                VALUES
+                (
+                    :user_id,
+                    :category_id,
+                    :product_type_id,
+                    :title,
+                    :description,
+                    :condition,
+                    :price,
+                    :ai_price,
+                    :location,
+                    'ACTIVE'
+                )
                 """),
                 {
                     "user_id":
@@ -374,6 +420,9 @@ def create_product(
 
                     "category_id":
                         data.category_id,
+
+                    "product_type_id":
+                        data.product_type_id,
 
                     "title":
                         data.title,
@@ -446,19 +495,20 @@ def create_product(
 
                 # Check attribute belongs to category
 
+
                 attribute_result = connection.execute(
                     text("""
                         SELECT ATTRIBUTE_ID
-                        FROM CATEGORY_ATTRIBUTES
-                        WHERE ATTRIBUTE_ID = :attribute_id
-                          AND C_ID = :category_id
+                        FROM PRODUCT_TYPE_ATTRIBUTES
+                        WHERE PRODUCT_TYPE_ID = :product_type_id
+                        AND ATTRIBUTE_ID = :attribute_id
                     """),
                     {
-                        "attribute_id":
-                            attribute_id,
+                        "product_type_id":
+                            data.product_type_id,
 
-                        "category_id":
-                            data.category_id
+                        "attribute_id":
+                            attribute_id
                     }
                 )
 
@@ -473,7 +523,7 @@ def create_product(
                         detail=(
                             "Invalid attribute "
                             f"{attribute_id} "
-                            "for selected category"
+                            "for selected product type"
                         )
                     )
 

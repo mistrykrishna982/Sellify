@@ -1,6 +1,12 @@
 from pathlib import Path
+from PIL import Image
 
-from transformers import pipeline
+from transformers import (
+    pipeline,
+    BlipProcessor,
+    BlipForConditionalGeneration,
+)
+
 from sqlalchemy import text
 
 from database import engine
@@ -13,6 +19,19 @@ from database import engine
 classifier = pipeline(
     "zero-shot-image-classification",
     model="openai/clip-vit-base-patch32"
+)
+
+
+# ---------------------------------------------------
+# Load BLIP AI model
+# ---------------------------------------------------
+
+blip_processor = BlipProcessor.from_pretrained(
+    "Salesforce/blip-image-captioning-base"
+)
+
+blip_model = BlipForConditionalGeneration.from_pretrained(
+    "Salesforce/blip-image-captioning-base"
 )
 
 
@@ -122,6 +141,315 @@ def build_product_type_prompts(product_types):
 
 
 # ---------------------------------------------------
+# Generate Product Caption Using BLIP
+# ---------------------------------------------------
+
+def generate_product_caption(image_path: str):
+
+    path = Path(image_path)
+
+    if not path.is_absolute():
+        path = BASE_DIR / path
+
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Image not found: {path}"
+        )
+
+    print("Generating BLIP product caption...")
+
+    image = Image.open(path).convert("RGB")
+
+    inputs = blip_processor(
+        images=image,
+        return_tensors="pt"
+    )
+
+    output = blip_model.generate(
+        **inputs,
+        max_new_tokens=30
+    )
+
+    caption = blip_processor.decode(
+        output[0],
+        skip_special_tokens=True
+    ).strip()
+
+    print("BLIP caption:")
+    print(caption)
+
+    if not caption:
+        raise ValueError(
+            "BLIP could not generate a product caption."
+        )
+
+    return caption
+
+
+
+# ---------------------------------------------------
+# Product Type Aliases For BLIP Matching
+# ---------------------------------------------------
+
+PRODUCT_TYPE_ALIASES = {
+
+    "Mobile Phone": [
+        "mobile phone",
+        "mobile",
+        "cell phone",
+        "cellphone",
+        "smartphone",
+        "smart phone",
+        "iphone",
+        "android phone",
+        "android smartphone",
+        "samsung phone",
+    ],
+
+    "Laptop": [
+        "laptop",
+        "notebook",
+        "notebook computer",
+        "portable computer",
+    ],
+
+    "Speaker": [
+        "speaker",
+        "bluetooth speaker",
+        "portable speaker",
+    ],
+
+    "Headphones": [
+        "headphones",
+        "headphone",
+        "earphones",
+        "earbuds",
+        "wireless earbuds",
+    ],
+
+    "Camera": [
+        "camera",
+        "digital camera",
+        "dslr",
+        "mirrorless camera",
+    ],
+
+    "Glucose Meter": [
+        "glucose meter",
+        "blood glucose meter",
+        "blood sugar meter",
+        "glucometer",
+    ],
+
+    "smartwatch": [
+        "smartwatch",
+        "smart watch",
+        "fitness watch",
+    ],
+
+    "computer": [
+        "computer",
+        "desktop computer",
+        "desktop pc",
+        "personal computer",
+    ],
+
+    "chair": [
+        "chair",
+        "office chair",
+        "dining chair",
+    ],
+
+    "sofa": [
+        "sofa",
+        "couch",
+        "loveseat",
+        "sectional sofa",
+    ],
+}
+
+
+# ---------------------------------------------------
+# Find Product Type From BLIP Caption
+# ---------------------------------------------------
+
+def find_product_type_from_caption(
+    caption,
+    product_types
+):
+
+    caption = caption.lower().strip()
+
+    for product_type in product_types:
+
+        product_type_name = (
+            product_type["product_type_name"]
+        ).lower().strip()
+
+        ai_description = (
+            product_type.get("ai_description") or ""
+        ).lower().strip()
+
+        # ------------------------------------------------
+        # 1. Check the actual Product Type name
+        # ------------------------------------------------
+
+        if product_type_name in caption:
+
+            return product_type
+
+        # ------------------------------------------------
+        # 2. Check manually defined aliases
+        # ------------------------------------------------
+
+        aliases = PRODUCT_TYPE_ALIASES.get(
+            product_type["product_type_name"],
+            []
+        )
+
+        for alias in aliases:
+
+            if alias.lower() in caption:
+
+                return product_type
+
+        # ------------------------------------------------
+        # 3. Check useful words from AI description
+        # ------------------------------------------------
+
+        if ai_description:
+
+            description_words = [
+                word.strip(
+                    ".,!?;:()[]{}"
+                ).lower()
+                for word in ai_description.split()
+            ]
+
+            important_words = [
+                word
+                for word in description_words
+                if len(word) >= 5
+            ]
+
+            matches = 0
+
+            for word in important_words:
+
+                if word in caption:
+
+                    matches += 1
+
+            if matches >= 2:
+
+                return product_type
+
+    return None
+
+
+# ---------------------------------------------------
+# Get Clean Unsupported Product Name
+# ---------------------------------------------------
+
+def get_unsupported_product_name(caption: str):
+
+    caption = caption.lower().strip()
+
+    # ------------------------------------------------
+    # Canonical marketplace product names
+    # ------------------------------------------------
+
+    product_aliases = {
+
+        "Washing Machine": [
+            "washing machine",
+            "washer",
+            "front load washer",
+            "front-load washer",
+            "top load washer",
+            "top-load washer",
+            "front load washing machine",
+            "front-load washing machine",
+            "top load washing machine",
+            "top-load washing machine",
+        ],
+
+        "Printer": [
+            "printer",
+        ],
+
+        "Projector": [
+            "projector",
+        ],
+
+        "Air Purifier": [
+            "air purifier",
+        ],
+
+        "Television": [
+            "television",
+            "tv",
+        ],
+
+        "Microwave": [
+            "microwave",
+        ],
+
+        "Refrigerator": [
+            "refrigerator",
+            "fridge",
+        ],
+
+        "Vacuum Cleaner": [
+            "vacuum cleaner",
+            "vacuum",
+        ],
+
+        "Iron": [
+            "iron",
+        ],
+
+        "Keyboard": [
+            "keyboard",
+        ],
+
+        "Mouse": [
+            "mouse",
+        ],
+
+        "Monitor": [
+            "monitor",
+        ],
+
+        "Tablet": [
+            "tablet",
+        ],
+
+        "Gaming Console": [
+            "gaming console",
+        ],
+    }
+
+    # ------------------------------------------------
+    # Find canonical product name
+    # ------------------------------------------------
+
+    for product_name, aliases in product_aliases.items():
+
+        for alias in aliases:
+
+            if alias in caption:
+
+                return product_name
+
+    # ------------------------------------------------
+    # If nothing matches, do not save a raw BLIP
+    # caption as the Product Type.
+    # ------------------------------------------------
+
+    return "Unknown"
+
+# ---------------------------------------------------
 # Find Product Type From Prompt
 # ---------------------------------------------------
 
@@ -207,6 +535,23 @@ def analyze_product_image(image_path: str):
         raise ValueError(
             "No Sellify product types found."
         )
+
+
+    # ------------------------------------------------
+    # Generate BLIP product caption
+    # ------------------------------------------------
+
+    caption = generate_product_caption(
+        str(path)
+    )
+
+    print(
+        "BLIP product caption:"
+    )
+
+    print(caption)
+
+   
 
     # ------------------------------------------------
     # Build product type prompts
@@ -387,6 +732,9 @@ def analyze_product_image(image_path: str):
 
         "supported":
             True,
+
+        "unsupported_product_name":
+            None,
 
         "predictions":
             predictions

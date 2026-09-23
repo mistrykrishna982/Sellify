@@ -47,6 +47,7 @@ df["storage"] = df["storage"].fillna("Unknown")
 
 FEATURE_COLUMNS = [
     "category",
+    "product_type",
     "brand",
     "model",
     "age",
@@ -67,6 +68,7 @@ y = df["price"]
 
 CATEGORICAL_FEATURES = [
     "category",
+    "product_type",
     "brand",
     "model",
     "condition",

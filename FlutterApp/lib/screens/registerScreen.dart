@@ -114,6 +114,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           name: loginResult["name"],
           email: loginResult["email"],
           role: loginResult["role"],
+          accessToken: loginResult["access_token"],
         );
 
         if (!mounted) return;

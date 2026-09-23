@@ -4,6 +4,7 @@ import '../services/auth_service.dart';
 import 'HomeScreen.dart';
 import 'registerScreen.dart';
 import 'ForgotPasswordScreen.dart';
+import 'admin/AdminDashboardScreen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -62,6 +63,7 @@ class _LoginScreenState extends State<LoginScreen> {
           name: result["name"],
           email: result["email"],
           role: result["role"],
+          accessToken: result["access_token"],
         );
 
         if (!mounted) return;
@@ -73,13 +75,24 @@ class _LoginScreenState extends State<LoginScreen> {
         );
 
         // Go to HomeScreen
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const HomeScreen(),
-          ),
-              (route) => false,
-        );
+        // Go to the correct screen based on user role
+        if (result["role"] == "ADMIN") {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const AdminDashboardScreen(),
+            ),
+                (route) => false,
+          );
+        } else {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => const HomeScreen(),
+            ),
+                (route) => false,
+          );
+        }
       }
       else {
         ScaffoldMessenger.of(context).showSnackBar(

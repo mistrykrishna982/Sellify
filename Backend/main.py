@@ -1,5 +1,9 @@
 from fastapi import FastAPI
 from database import engine
+from routes import categories
+from routes import products
+from routes import product_types
+from routes import unsupported_products
 from auth import router as auth_router
 from fastapi.staticfiles import StaticFiles
 from routes.products import router as products_router
@@ -15,6 +19,13 @@ app = FastAPI(
 app.include_router(auth_router)
 app.include_router(products_router)
 app.include_router(categories_router)
+app.include_router(
+    product_types.router, 
+    prefix="/product-types")
+app.include_router(
+    unsupported_products.router,
+    prefix="/unsupported-products"
+)
 
 # Uploaded files
 app.mount(

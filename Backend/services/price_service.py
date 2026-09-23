@@ -17,6 +17,7 @@ print("Price prediction model loaded successfully.")
 
 def predict_price(
     category,
+    product_type,
     brand,
     model,
     age,
@@ -29,6 +30,7 @@ def predict_price(
     data = pd.DataFrame([
         {
             "category": category,
+            "product_type": product_type if product_type else "Unknown",
             "brand": brand if brand else "Unknown",
             "model": model if model else "Unknown",
             "age": age,

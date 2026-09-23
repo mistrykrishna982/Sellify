@@ -8,6 +8,7 @@ class AuthService {
     required String name,
     required String email,
     required String role,
+    required String accessToken,
   }) async {
 
     final prefs = await SharedPreferences.getInstance();
@@ -17,6 +18,7 @@ class AuthService {
     await prefs.setString("name", name);
     await prefs.setString("email", email);
     await prefs.setString("role", role);
+    await prefs.setString("accessToken", accessToken);
   }
 
 
@@ -57,6 +59,14 @@ class AuthService {
     final prefs = await SharedPreferences.getInstance();
 
     return prefs.getString("userId");
+  }
+
+
+  // Get JWT access token
+  static Future<String?> getAccessToken() async {
+    final prefs = await SharedPreferences.getInstance();
+
+    return prefs.getString("accessToken");
   }
 
 

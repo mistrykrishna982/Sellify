@@ -1,17 +1,19 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-
+import 'admin/UnsupportedProductScreen.dart';
 import 'ProductDetailsScreen.dart';
 
 
 class AIAnalysisScreen extends StatefulWidget {
   final File image;
+  final List<File> allImages;
   final Map<String, dynamic> result;
 
   const AIAnalysisScreen({
     super.key,
     required this.image,
+    required this.allImages,
     required this.result,
   });
 
@@ -30,6 +32,35 @@ class _AIAnalysisScreenState
   // ------------------------------------------------
 
   void continueToProductDetails() {
+    final String productType =
+    (widget.result["product_type"] ?? "Unknown")
+        .toString()
+        .trim();
+
+    final dynamic productTypeId =
+    widget.result["product_type_id"];
+
+    final bool isUnsupported =
+        productType.isEmpty ||
+            productType.toLowerCase() == "unknown" ||
+            productTypeId == null;
+
+    if (isUnsupported) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) =>
+              UnsupportedProductScreen(
+                image: widget.image,
+                aiResult: {
+                  ...widget.result,
+                },
+              ),
+        ),
+      );
+
+      return;
+    }
 
     Navigator.push(
       context,
@@ -37,7 +68,7 @@ class _AIAnalysisScreenState
         builder: (context) =>
             ProductDetailsScreen(
               image: widget.image,
-
+              allImages: widget.allImages,
               aiResult: {
                 ...widget.result,
               },

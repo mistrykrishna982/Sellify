@@ -138,10 +138,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
         MaterialPageRoute(
           builder: (context) => AIAnalysisScreen(
             image: primaryImage,
-            result: {
-              ...result,
-              "allImages": selectedImages,
-            },
+            allImages: selectedImages,
+            result: result,
           ),
         ),
       );
