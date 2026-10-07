@@ -208,3 +208,78 @@ def get_product_type_attributes(product_type_id: int):
             status_code=500,
             detail=str(e)
         )
+
+
+@router.delete("/{category_id}")
+def delete_category(
+    category_id: int,
+    admin=Depends(require_admin)
+):
+    try:
+        with engine.begin() as connection:
+
+            category = connection.execute(
+                text("""
+                    SELECT
+                        C_ID,
+                        CATEGORY_NAME
+                    FROM CATEGORIES
+                    WHERE C_ID = :category_id
+                    LIMIT 1
+                """),
+                {
+                    "category_id": category_id
+                }
+            ).fetchone()
+
+            if not category:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Category not found"
+                )
+
+            product_type_count = connection.execute(
+                text("""
+                    SELECT COUNT(*) AS total
+                    FROM PRODUCT_TYPES
+                    WHERE C_ID = :category_id
+                """),
+                {
+                    "category_id": category_id
+                }
+            ).scalar()
+
+            if product_type_count > 0:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Cannot delete category because it "
+                        "contains product types. "
+                        "Remove or move the product types first."
+                    )
+                )
+
+            connection.execute(
+                text("""
+                    DELETE FROM CATEGORIES
+                    WHERE C_ID = :category_id
+                """),
+                {
+                    "category_id": category_id
+                }
+            )
+
+            return {
+                "message": "Category deleted successfully",
+                "category_id": category_id,
+                "category_name": category.CATEGORY_NAME
+            }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )

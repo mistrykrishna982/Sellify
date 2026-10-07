@@ -233,27 +233,22 @@ class _LoginScreenState extends State<LoginScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const SizedBox(height: 25),
+              const SizedBox(height: 20),
 
               Center(
                 child: Container(
-                  height: 90,
-                  width: 90,
+                  height: 150,
+                  width: 150,
 
                   decoration: BoxDecoration(
                     color: Colors.blue.shade50,
                     shape: BoxShape.circle,
                   ),
 
-                  child: Icon(
-                    Icons.storefront_rounded,
-                    size: 50,
-                    color: Colors.blue.shade700,
-                  ),
+                 child: Image.asset("assets/images/logo.jpeg",height: 50,width: 50,fit:BoxFit.contain,),
                 ),
               ),
 
-              const SizedBox(height: 24),
 
              //title
               const Text(

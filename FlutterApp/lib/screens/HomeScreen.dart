@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/widgets.dart';
 import 'package:sellify/screens/LoginScreen.dart';
 import 'package:sellify/screens/ProfileScreen.dart';
 import 'package:sellify/screens/registerScreen.dart';
 import 'package:sellify/screens/AddProductScreen.dart';
 import 'package:sellify/services/api_service.dart';
 import 'package:sellify/services/auth_service.dart';
+import 'NotificationsScreen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -13,11 +15,13 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState
+    extends State<HomeScreen>
+    with WidgetsBindingObserver {
   //0=home
   //1=profile
   int selectedIndex = 0;
-
+  int unreadNotificationCount = 0;
 
   List<Map<String, dynamic>> products = [];
   bool isLoadingProducts = true;
@@ -26,8 +30,32 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
+
+    WidgetsBinding.instance.addObserver(this);
+
     loadProducts();
+
+    loadNotificationCount();
   }
+
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+
+    super.dispose();
+  }
+
+
+  @override
+  void didChangeAppLifecycleState(
+      AppLifecycleState state,
+      ) {
+    if (state == AppLifecycleState.resumed) {
+      loadNotificationCount();
+    }
+  }
+
 
   //login
   void requireLogin(BuildContext context) {
@@ -206,6 +234,38 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       },
     );
+  }
+
+
+
+  Future<void> loadNotificationCount() async {
+
+    try {
+
+      final userId =
+      await AuthService.getUserId();
+
+      if (userId == null ||
+          userId.isEmpty) {
+
+        return;
+      }
+
+      final count =
+      await ApiService.getUnreadNotificationCount();
+
+      if (!mounted) return;
+
+      setState(() {
+        unreadNotificationCount = count;
+      });
+
+    } catch (e) {
+
+      debugPrint(
+        "Notification count error: $e",
+      );
+    }
   }
 
 
@@ -447,15 +507,92 @@ class _HomeScreenState extends State<HomeScreen> {
 
         actions: [
           // Notification
-          IconButton(
-            tooltip: "Notifications",
-            icon: const Icon(
-              Icons.notifications_none_rounded,
-              color: Colors.black87,
-            ),
-            onPressed: () {
-              requireLogin(context);
-            },
+          Stack(
+            clipBehavior: Clip.none,
+            children: [
+
+              IconButton(
+                tooltip: "Notifications",
+
+                icon: const Icon(
+                  Icons.notifications_none_rounded,
+                  color: Colors.black87,
+                ),
+
+                onPressed: () async {
+
+                  final userId =
+                  await AuthService.getUserId();
+
+                  if (userId == null ||
+                      userId.isEmpty) {
+
+                    requireLogin(context);
+
+                    return;
+                  }
+
+                  await Navigator.push(
+                    context,
+
+                    MaterialPageRoute(
+                      builder: (_) =>
+                      const NotificationsScreen(),
+                    ),
+                  );
+
+                  // Refresh badge after returning
+                  loadNotificationCount();
+                },
+              ),
+
+              if (unreadNotificationCount > 0)
+
+                Positioned(
+                  right: 3,
+                  top: 2,
+
+                  child: Container(
+                    padding:
+                    const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 2,
+                    ),
+
+                    constraints:
+                    const BoxConstraints(
+                      minWidth: 18,
+                      minHeight: 18,
+                    ),
+
+                    decoration:
+                    BoxDecoration(
+                      color: Colors.red,
+                      borderRadius:
+                      BorderRadius.circular(10),
+                      border: Border.all(
+                        color: Colors.white,
+                        width: 1.5,
+                      ),
+                    ),
+
+                    child: Text(
+                      unreadNotificationCount > 99
+                          ? "99+"
+                          : unreadNotificationCount
+                          .toString(),
+
+                      textAlign: TextAlign.center,
+
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
 
           // Cart

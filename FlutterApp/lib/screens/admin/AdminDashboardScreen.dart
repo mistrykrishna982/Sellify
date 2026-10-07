@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
+
 import 'ManageCategoriesScreen.dart';
 import 'ManageUnsupportedProductsScreen.dart';
+import 'ManageClassificationRequestsScreen.dart';
+import 'AdminReportScreen.dart';
+
 
 class AdminDashboardScreen extends StatelessWidget {
   const AdminDashboardScreen({super.key});
@@ -72,6 +76,20 @@ class AdminDashboardScreen extends StatelessWidget {
                     ),
 
                     _dashboardCard(
+                      icon: Icons.pending_actions_outlined,
+                      title: "Classification Requests",
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                            const ManageClassificationRequestsScreen(),
+                          ),
+                        );
+                      },
+                    ),
+
+                    _dashboardCard(
                       icon: Icons.report_problem_outlined,
                       title: "Unsupported Products",
                       onTap: () {
@@ -80,6 +98,20 @@ class AdminDashboardScreen extends StatelessWidget {
                           MaterialPageRoute(
                             builder: (context) =>
                             const ManageUnsupportedProductsScreen(),
+                          ),
+                        );
+                      },
+                    ),
+
+                    _dashboardCard(
+                      icon: Icons.assessment_outlined,
+                      title: "Generate Report",
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                            const AdminReportScreen(),
                           ),
                         );
                       },

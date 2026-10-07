@@ -1,8 +1,9 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'admin/UnsupportedProductScreen.dart';
+
 import 'ProductDetailsScreen.dart';
+import 'EditProductClassificationScreen.dart';
 
 
 class AIAnalysisScreen extends StatefulWidget {
@@ -32,36 +33,6 @@ class _AIAnalysisScreenState
   // ------------------------------------------------
 
   void continueToProductDetails() {
-    final String productType =
-    (widget.result["product_type"] ?? "Unknown")
-        .toString()
-        .trim();
-
-    final dynamic productTypeId =
-    widget.result["product_type_id"];
-
-    final bool isUnsupported =
-        productType.isEmpty ||
-            productType.toLowerCase() == "unknown" ||
-            productTypeId == null;
-
-    if (isUnsupported) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) =>
-              UnsupportedProductScreen(
-                image: widget.image,
-                aiResult: {
-                  ...widget.result,
-                },
-              ),
-        ),
-      );
-
-      return;
-    }
-
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -77,7 +48,6 @@ class _AIAnalysisScreenState
     );
   }
 
-
   // ------------------------------------------------
   // BUILD
   // ------------------------------------------------
@@ -91,8 +61,7 @@ class _AIAnalysisScreenState
             "Unknown";
 
     final double confidence =
-    (widget.result["confidence"] ?? 0)
-        .toDouble();
+        ((widget.result["confidence"] ?? 0) as num).toDouble() * 100;
 
 
     return Scaffold(
@@ -369,45 +338,75 @@ class _AIAnalysisScreenState
             const SizedBox(height: 15),
 
 
-            // ----------------------------------------
-            // CONTINUE BUTTON
-            // ----------------------------------------
+            // --------------------------------------------------------
+// YES - AI IS CORRECT
+// --------------------------------------------------------
 
             SizedBox(
+              width: double.infinity,
 
-              width:
-              double.infinity,
+              child: ElevatedButton(
+                onPressed: continueToProductDetails,
 
-              child:
-              ElevatedButton(
-
-                onPressed:
-                continueToProductDetails,
-
-                style:
-                ElevatedButton.styleFrom(
-
-                  padding:
-                  const EdgeInsets
-                      .symmetric(
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
                     vertical: 17,
                   ),
                 ),
 
-                child:
-                const Text(
+                child: const Text(
                   "YES, CONTINUE",
 
-                  style:
-                  TextStyle(
+                  style: TextStyle(
                     fontSize: 16,
-                    fontWeight:
-                    FontWeight.bold,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               ),
             ),
 
+            const SizedBox(height: 12),
+
+// --------------------------------------------------------
+// NO - EDIT PRODUCT / CATEGORY
+// --------------------------------------------------------
+
+            SizedBox(
+              width: double.infinity,
+
+              child: OutlinedButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          EditProductClassificationScreen(
+                            image: widget.image,
+                            allImages: widget.allImages,
+                            aiResult: {
+                              ...widget.result,
+                            },
+                          ),
+                    ),
+                  );
+                },
+
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 17,
+                  ),
+                ),
+
+                child: const Text(
+                  "NO, EDIT PRODUCT / CATEGORY",
+
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),

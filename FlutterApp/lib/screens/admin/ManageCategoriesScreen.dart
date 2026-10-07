@@ -49,6 +49,83 @@ class _ManageCategoriesScreenState
     }
   }
 
+
+  Future<void> showDeleteCategoryDialog(
+      int categoryId,
+      String categoryName,
+      ) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text(
+            "Delete Category?",
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          content: Text(
+            'Are you sure you want to delete "$categoryName"?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text("Cancel"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text("Delete"),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete != true) {
+      return;
+    }
+
+    try {
+      await ApiService.deleteCategory(
+        categoryId: categoryId,
+      );
+
+      if (!mounted) return;
+
+      await loadCategories();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '"$categoryName" deleted successfully',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            "Failed to delete category: $e",
+          ),
+        ),
+      );
+    }
+  }
+
+
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -111,9 +188,27 @@ class _ManageCategoriesScreenState
                   "Category ID: ${category["category_id"]}",
                 ),
 
-                trailing: const Icon(
-                  Icons.arrow_forward_ios,
-                  size: 18,
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(
+                        Icons.delete_outline,
+                        color: Colors.red,
+                      ),
+                      onPressed: () {
+                        showDeleteCategoryDialog(
+                          category["category_id"],
+                          category["category_name"].toString(),
+                        );
+                      },
+                    ),
+
+                    const Icon(
+                      Icons.arrow_forward_ios,
+                      size: 18,
+                    ),
+                  ],
                 ),
 
                 onTap: () {
@@ -138,98 +233,111 @@ class _ManageCategoriesScreenState
     );
   }
 
-Future<void> showAddCategoryDialog() async {
-  final controller = TextEditingController();
+  Future<void> showAddCategoryDialog() async {
+    final controller = TextEditingController();
 
-  try {
-    await showDialog(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text(
-            "Add Category",
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            textCapitalization: TextCapitalization.words,
-            decoration: const InputDecoration(
-              labelText: "Category Name",
-              hintText: "Example: Garden & Tools",
-              border: OutlineInputBorder(),
-            ),
-          ),
-
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.of(dialogContext).pop();
-              },
-              child: const Text("Cancel"),
-            ),
-
-            ElevatedButton(
-              onPressed: () async {
-                final categoryName =
-                  controller.text.trim();
-
-                if (categoryName.isEmpty) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        "Please enter a category name",
-                      ),
-                    ),
-                  );
-                  return;
-                }
-
-                try {
-                  await ApiService.createCategory(
-                    categoryName: categoryName,
-                  );
-
-                  if (!mounted) return;
-
-                  Navigator.of(dialogContext).pop();
-
-                  await loadCategories();
-
-                  if (!mounted) return;
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        '"$categoryName" added successfully',
-                      ),
-                    ),
-                  );
-                } catch (e) {
-                  if (!mounted) return;
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        "Failed to add category: $e",
-                      ),
-                    ),
-                  );
-                }
-              },
-              child: const Text(
-                "Add Category",
+    try {
+      final categoryName = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) {
+          return AlertDialog(
+            title: const Text(
+              "Add Category",
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
               ),
             ),
-          ],
-        );
-      },
-    );
-  } finally {
-    controller.dispose();
+
+            content: TextField(
+              controller: controller,
+              autofocus: true,
+              textCapitalization: TextCapitalization.words,
+              decoration: const InputDecoration(
+                labelText: "Category Name",
+                hintText: "Example: Garden & Tools",
+                border: OutlineInputBorder(),
+              ),
+            ),
+
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                },
+                child: const Text("Cancel"),
+              ),
+
+              ElevatedButton(
+                onPressed: () async {
+                  final name =
+                  controller.text.trim();
+
+                  if (name.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          "Please enter a category name",
+                        ),
+                      ),
+                    );
+                    return;
+                  }
+
+                  try {
+                    await ApiService.createCategory(
+                      categoryName: name,
+                    );
+
+                    if (!dialogContext.mounted) return;
+
+                    Navigator.of(dialogContext).pop(name);
+                  } catch (e) {
+                    if (!dialogContext.mounted) return;
+
+                    ScaffoldMessenger.of(dialogContext).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          "Failed to add category: $e",
+                        ),
+                      ),
+                    );
+                  }
+                },
+
+                child: const Text(
+                  "Add Category",
+                ),
+              ),
+            ],
+          );
+        },
+      );
+
+      // Dispose only after the dialog has completely closed.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        controller.dispose();
+      });
+
+      if (categoryName == null) {
+        return;
+      }
+
+      if (!mounted) return;
+
+      await loadCategories();
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            '"$categoryName" added successfully',
+          ),
+        ),
+      );
+    } catch (e) {
+      controller.dispose();
+      rethrow;
     }
   }
 }

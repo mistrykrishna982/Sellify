@@ -1,50 +1,51 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from pathlib import Path
 import shutil
 import uuid
 
+from pydantic import BaseModel, Field
+from sqlalchemy import text
+
+from database import engine
 from services.ai_service import analyze_product_image
 from services.price_service import predict_price
-from pydantic import BaseModel
-from sqlalchemy import text
-from database import engine
-from routes.unsupported_products import record_unsupported_product
+from auth import get_current_user
 
 class PricePredictionRequest(BaseModel):
     category: str
     product_type: str
-    brand: str = ""
-    model: str = ""
-    age: int
+    title: str = ""
+    age: str = ""
+    description: str = ""
     condition: str
-    ram: str = ""
-    storage: str = ""
-    processor: str = ""
+
+class ResolveProductClassificationRequest(BaseModel):
+    category: str = Field(..., min_length=1, max_length=100)
+    product_type: str = Field(..., min_length=1, max_length=100)
+
+
+class UpdateProductRequest(BaseModel):
+    title: str
+    description: str
+    condition: str
+    price: float
+    ai_price: float | None = None
+    location: str
 
 
 class CreateProductRequest(BaseModel):
-
-    user_id: int
-
     category_id: int
-
     product_type_id: int
-
     title: str
-
     description: str
-
     condition: str
-
-    price: int
-
-    ai_price: int
-
+    price: float
+    ai_price: float | None = None
     location: str
-
     image_path: str
-
-    attributes: dict[int, str] = {}
+    ai_product_name: str | None = None
+    ai_confidence: float | None = None
+    attributes: dict[int, str] = Field(default_factory=dict)
 
 
 router = APIRouter(
@@ -186,14 +187,7 @@ async def analyze_product(
         ai_result = analyze_product_image(
             str(file_path)
         )
-
-
-        # Record unsupported product request
-        if not ai_result["supported"]:
-
-            record_unsupported_product(
-                ai_result["unsupported_product_name"]
-            )
+        
 
 
         return {
@@ -240,30 +234,219 @@ async def analyze_product(
 
 
 
+# ============================================================
+# API: Resolve / Create Category and Product Type
+# ============================================================
 
-@router.post("/predict-price")
-def predict_product_price(
-    data: PricePredictionRequest
+@router.post("/resolve-classification")
+def resolve_product_classification(
+    request: ResolveProductClassificationRequest,
+    current_user=Depends(get_current_user)
 ):
 
     try:
 
-        predicted_price = predict_price(
-            category=data.category,
-            product_type=data.product_type,
-            brand=data.brand,
-            model=data.model,
-            age=data.age,
-            condition=data.condition,
-            ram=data.ram,
-            storage=data.storage,
-            processor=data.processor
-        )
+        # ----------------------------------------------------
+        # Clean user input
+        # ----------------------------------------------------
+
+        category_name = request.category.strip()
+        product_type_name = request.product_type.strip()
+
+        if not category_name:
+            raise HTTPException(
+                status_code=400,
+                detail="Category is required"
+            )
+
+        if not product_type_name:
+            raise HTTPException(
+                status_code=400,
+                detail="Product type is required"
+            )
+
+        # ----------------------------------------------------
+        # Start database transaction
+        # ----------------------------------------------------
+
+        with engine.begin() as connection:
+
+            # =================================================
+            # 1. FIND CATEGORY
+            # =================================================
+
+            category_result = connection.execute(
+                text("""
+                    SELECT
+                        C_ID,
+                        CATEGORY_NAME
+                    FROM CATEGORIES
+                    WHERE LOWER(CATEGORY_NAME) =
+                          LOWER(:category_name)
+                    LIMIT 1
+                """),
+                {
+                    "category_name": category_name
+                }
+            )
+
+            category = category_result.fetchone()
+
+            # =================================================
+            # 2. CREATE CATEGORY IF IT DOES NOT EXIST
+            # =================================================
+
+            if not category:
+
+                connection.execute(
+                    text("""
+                        INSERT INTO CATEGORIES
+                        (
+                            CATEGORY_NAME,
+                            AI_DESCRIPTION
+                        )
+                        VALUES
+                        (
+                            :category_name,
+                            NULL
+                        )
+                    """),
+                    {
+                        "category_name": category_name
+                    }
+                )
+
+                # Get newly created category
+                category_result = connection.execute(
+                    text("""
+                        SELECT
+                            C_ID,
+                            CATEGORY_NAME
+                        FROM CATEGORIES
+                        WHERE LOWER(CATEGORY_NAME) =
+                              LOWER(:category_name)
+                        LIMIT 1
+                    """),
+                    {
+                        "category_name": category_name
+                    }
+                )
+
+                category = category_result.fetchone()
+
+            if not category:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to create category"
+                )
+
+            category_id = int(category.C_ID)
+            final_category_name = str(
+                category.CATEGORY_NAME
+            )
+
+            # =================================================
+            # 3. FIND PRODUCT TYPE INSIDE CATEGORY
+            # =================================================
+
+            product_type_result = connection.execute(
+                text("""
+                    SELECT
+                        PRODUCT_TYPE_ID,
+                        PRODUCT_TYPE_NAME
+                    FROM PRODUCT_TYPES
+                    WHERE C_ID = :category_id
+                      AND LOWER(PRODUCT_TYPE_NAME) =
+                          LOWER(:product_type_name)
+                    LIMIT 1
+                """),
+                {
+                    "category_id": category_id,
+                    "product_type_name": product_type_name
+                }
+            )
+
+            product_type = (
+                product_type_result.fetchone()
+            )
+
+            # =================================================
+            # 4. CREATE PRODUCT TYPE IF IT DOES NOT EXIST
+            # =================================================
+
+            if not product_type:
+
+                connection.execute(
+                    text("""
+                        INSERT INTO PRODUCT_TYPES
+                        (
+                            C_ID,
+                            PRODUCT_TYPE_NAME,
+                            AI_DESCRIPTION
+                        )
+                        VALUES
+                        (
+                            :category_id,
+                            :product_type_name,
+                            NULL
+                        )
+                    """),
+                    {
+                        "category_id": category_id,
+                        "product_type_name": product_type_name
+                    }
+                )
+
+                # Get newly created product type
+                product_type_result = connection.execute(
+                    text("""
+                        SELECT
+                            PRODUCT_TYPE_ID,
+                            PRODUCT_TYPE_NAME
+                        FROM PRODUCT_TYPES
+                        WHERE C_ID = :category_id
+                          AND LOWER(PRODUCT_TYPE_NAME) =
+                              LOWER(:product_type_name)
+                        LIMIT 1
+                    """),
+                    {
+                        "category_id": category_id,
+                        "product_type_name": product_type_name
+                    }
+                )
+
+                product_type = (
+                    product_type_result.fetchone()
+                )
+
+            if not product_type:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to create product type"
+                )
+
+            product_type_id = int(
+                product_type.PRODUCT_TYPE_ID
+            )
+
+            final_product_type_name = str(
+                product_type.PRODUCT_TYPE_NAME
+            )
+
+        # =====================================================
+        # RETURN CLASSIFICATION
+        # =====================================================
 
         return {
-            "message": "Price prediction completed successfully",
-            "ai_price": predicted_price
+            "category_id": category_id,
+            "category": final_category_name,
+
+            "product_type_id": product_type_id,
+            "product_type": final_product_type_name,
         }
+
+    except HTTPException:
+        raise
 
     except Exception as e:
 
@@ -274,16 +457,44 @@ def predict_product_price(
 
 
 
+
+@router.post("/predict-price")
+def predict_product_price(
+    request: PricePredictionRequest,
+):
+    predicted_price = predict_price(
+        category=request.category,
+        product_type=request.product_type,
+        title=request.title,
+        description=request.description,
+        age=request.age,
+        condition=request.condition,
+    )
+
+    return {
+        "ai_price": predicted_price,
+    }
+
+
+
 # ---------------------------------------------------
 # API 4: Create Final Product Listing
 # ---------------------------------------------------
 
 @router.post("/create")
 def create_product(
-    data: CreateProductRequest
+    data: CreateProductRequest,
+    current_user=Depends(get_current_user)
 ):
 
     try:
+
+        # ------------------------------------------------
+        # Get user ID from JWT
+        # ------------------------------------------------
+
+        user_id = current_user["user_id"]
+
 
         # ------------------------------------------------
         # Validate image path
@@ -314,7 +525,7 @@ def create_product(
                     WHERE U_ID = :user_id
                 """),
                 {
-                    "user_id": data.user_id
+                    "user_id": user_id
                 }
             )
 
@@ -339,8 +550,7 @@ def create_product(
                     WHERE C_ID = :category_id
                 """),
                 {
-                    "category_id":
-                        data.category_id
+                    "category_id": data.category_id
                 }
             )
 
@@ -354,18 +564,16 @@ def create_product(
                 )
 
 
-
-
-             # --------------------------------------------
-             # Check product type belongs to category
-             # --------------------------------------------
+            # --------------------------------------------
+            # Check product type belongs to category
+            # --------------------------------------------
 
             product_type_result = connection.execute(
                 text("""
                     SELECT PRODUCT_TYPE_ID
                     FROM PRODUCT_TYPES
                     WHERE PRODUCT_TYPE_ID = :product_type_id
-                        AND C_ID = :category_id
+                      AND C_ID = :category_id
                 """),
                 {
                     "product_type_id": data.product_type_id,
@@ -376,10 +584,12 @@ def create_product(
             product_type = product_type_result.fetchone()
 
             if not product_type:
+
                 raise HTTPException(
                     status_code=400,
                     detail="Selected product type does not belong to selected category"
                 )
+
 
             # --------------------------------------------
             # Insert product
@@ -387,7 +597,7 @@ def create_product(
 
             product_result = connection.execute(
                 text("""
-                   INSERT INTO PRODUCTS
+                    INSERT INTO PRODUCTS
                     (
                         U_ID,
                         C_ID,
@@ -398,49 +608,52 @@ def create_product(
                         PRICE,
                         AI_PRICE,
                         LOCATION,
+                        AI_CONFIDENCE,
+                        AI_ANALYZED,
+                        AI_PRODUCT_NAME,
                         STATUS
-                )
-                VALUES
-                (
-                    :user_id,
-                    :category_id,
-                    :product_type_id,
-                    :title,
-                    :description,
-                    :condition,
-                    :price,
-                    :ai_price,
-                    :location,
-                    'ACTIVE'
-                )
+                    )
+                    VALUES
+                    (
+                        :user_id,
+                        :category_id,
+                        :product_type_id,
+                        :title,
+                        :description,
+                        :condition,
+                        :price,
+                        :ai_price,
+                        :location,
+                        :ai_confidence,
+                        :ai_analyzed,
+                        :ai_product_name,
+                        'ACTIVE'
+                    )
                 """),
                 {
-                    "user_id":
-                        data.user_id,
+                    "user_id": user_id,
 
-                    "category_id":
-                        data.category_id,
+                    "category_id": data.category_id,
 
-                    "product_type_id":
-                        data.product_type_id,
+                    "product_type_id": data.product_type_id,
 
-                    "title":
-                        data.title,
+                    "title": data.title,
 
-                    "description":
-                        data.description,
+                    "description": data.description,
 
-                    "condition":
-                        data.condition,
+                    "condition": data.condition,
 
-                    "price":
-                        data.price,
+                    "price": data.price,
 
-                    "ai_price":
-                        data.ai_price,
+                    "ai_price": data.ai_price,
 
-                    "location":
-                        data.location
+                    "location": data.location,
+
+                    "ai_confidence": data.ai_confidence,
+
+                    "ai_analyzed": 1,
+
+                    "ai_product_name": data.ai_product_name
                 }
             )
 
@@ -449,9 +662,7 @@ def create_product(
             # Get new product ID
             # --------------------------------------------
 
-            product_id = (
-                product_result.lastrowid
-            )
+            product_id = product_result.lastrowid
 
 
             # --------------------------------------------
@@ -472,11 +683,9 @@ def create_product(
                     )
                 """),
                 {
-                    "product_id":
-                        product_id,
+                    "product_id": product_id,
 
-                    "image_path":
-                        data.image_path
+                    "image_path": data.image_path
                 }
             )
 
@@ -485,48 +694,46 @@ def create_product(
             # Save dynamic attributes
             # --------------------------------------------
 
-            for attribute_id, attribute_value in (
-                data.attributes.items()
-            ):
+            for attribute_id, attribute_value in data.attributes.items():
 
                 if not attribute_value:
                     continue
 
 
-                # Check attribute belongs to category
-
+                # ----------------------------------------
+                # Check attribute belongs to product type
+                # ----------------------------------------
 
                 attribute_result = connection.execute(
                     text("""
                         SELECT ATTRIBUTE_ID
                         FROM PRODUCT_TYPE_ATTRIBUTES
                         WHERE PRODUCT_TYPE_ID = :product_type_id
-                        AND ATTRIBUTE_ID = :attribute_id
+                          AND ATTRIBUTE_ID = :attribute_id
                     """),
                     {
-                        "product_type_id":
-                            data.product_type_id,
+                        "product_type_id": data.product_type_id,
 
-                        "attribute_id":
-                            attribute_id
+                        "attribute_id": attribute_id
                     }
                 )
 
-                attribute = (
-                    attribute_result.fetchone()
-                )
+                attribute = attribute_result.fetchone()
 
                 if not attribute:
 
                     raise HTTPException(
                         status_code=400,
                         detail=(
-                            "Invalid attribute "
-                            f"{attribute_id} "
+                            f"Invalid attribute {attribute_id} "
                             "for selected product type"
                         )
                     )
 
+
+                # ----------------------------------------
+                # Save attribute value
+                # ----------------------------------------
 
                 connection.execute(
                     text("""
@@ -544,14 +751,11 @@ def create_product(
                         )
                     """),
                     {
-                        "product_id":
-                            product_id,
+                        "product_id": product_id,
 
-                        "attribute_id":
-                            attribute_id,
+                        "attribute_id": attribute_id,
 
-                        "attribute_value":
-                            attribute_value
+                        "attribute_value": attribute_value
                     }
                 )
 
@@ -562,20 +766,15 @@ def create_product(
 
         return {
 
-            "message":
-                "Product listed successfully",
+            "message": "Product listed successfully",
 
-            "product_id":
-                product_id,
+            "product_id": product_id,
 
-            "price":
-                data.price,
+            "price": data.price,
 
-            "ai_price":
-                data.ai_price,
+            "ai_price": data.ai_price,
 
-            "status":
-                "ACTIVE"
+            "status": "ACTIVE"
         }
 
 
@@ -591,7 +790,7 @@ def create_product(
             detail=str(e)
         )
 
-
+    
 
 @router.get("")
 def get_products(user_id: int):
@@ -649,6 +848,416 @@ def get_products(user_id: int):
         )
 
 
+
+# ---------------------------------------------------
+# API: Update Product
+# ---------------------------------------------------
+
+@router.put("/{product_id}")
+def update_product(
+    product_id: int,
+    data: UpdateProductRequest,
+    current_user=Depends(get_current_user)
+):
+    try:
+
+        user_id = current_user["user_id"]
+
+        # ------------------------------------------------
+        # Validate values
+        # ------------------------------------------------
+
+        if not data.title.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Product title is required"
+            )
+
+        if not data.description.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Product description is required"
+            )
+
+        if not data.condition.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Product condition is required"
+            )
+
+        if not data.location.strip():
+            raise HTTPException(
+                status_code=400,
+                detail="Product location is required"
+            )
+
+        if data.price <= 0:
+            raise HTTPException(
+                status_code=400,
+                detail="Product price must be greater than zero"
+            )
+
+        # ------------------------------------------------
+        # Update product
+        # ------------------------------------------------
+
+        with engine.begin() as connection:
+
+            product_result = connection.execute(
+                text("""
+                    SELECT
+                        P_ID,
+                        C_ID,
+                        PRODUCT_TYPE_ID,
+                        STATUS
+                    FROM PRODUCTS
+                    WHERE P_ID = :product_id
+                      AND U_ID = :user_id
+                    LIMIT 1
+                """),
+                {
+                    "product_id": product_id,
+                    "user_id": user_id,
+                }
+            )
+
+            product = product_result.mappings().first()
+
+            if not product:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Product not found"
+                )
+
+            if product["STATUS"] != "ACTIVE":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Only active products can be edited"
+                )
+
+            # ------------------------------------------------
+            # Update only editable information
+            #
+            # Category and Product Type are intentionally
+            # NOT changed.
+            # ------------------------------------------------
+
+            connection.execute(
+                text("""
+                    UPDATE PRODUCTS
+                    SET
+                        TITLE = :title,
+                        DESCRIPTION = :description,
+                        `CONDITION` = :condition,
+                        PRICE = :price,
+                        AI_PRICE = :ai_price,
+                        LOCATION = :location
+                    WHERE P_ID = :product_id
+                      AND U_ID = :user_id
+                """),
+                {
+                    "title": data.title.strip(),
+                    "description": data.description.strip(),
+                    "condition": data.condition.strip(),
+                    "price": data.price,
+                    "ai_price": data.ai_price,
+                    "location": data.location.strip(),
+                    "product_id": product_id,
+                    "user_id": user_id,
+                }
+            )
+
+        return {
+            "message": "Product updated successfully",
+            "product_id": product_id,
+            "status": "ACTIVE",
+            "price": data.price,
+            "ai_price": data.ai_price,
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+
+
+
+# ---------------------------------------------------
+# API: Delete / Stop Selling Product
+# ---------------------------------------------------
+
+@router.delete("/{product_id}")
+def delete_product(
+    product_id: int,
+    current_user=Depends(get_current_user)
+):
+    try:
+
+        user_id = current_user["user_id"]
+
+        with engine.begin() as connection:
+
+            # --------------------------------------------
+            # Check product belongs to current user
+            # --------------------------------------------
+
+            product_result = connection.execute(
+                text("""
+                    SELECT
+                        P_ID,
+                        STATUS
+                    FROM PRODUCTS
+                    WHERE P_ID = :product_id
+                      AND U_ID = :user_id
+                    LIMIT 1
+                """),
+                {
+                    "product_id": product_id,
+                    "user_id": user_id,
+                }
+            )
+
+            product = product_result.mappings().first()
+
+            if not product:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Product not found"
+                )
+
+            # --------------------------------------------
+            # Already deleted
+            # --------------------------------------------
+
+            if product["STATUS"] == "DELETED":
+                raise HTTPException(
+                    status_code=400,
+                    detail="Product has already been deleted"
+                )
+
+            # --------------------------------------------
+            # Stop selling product
+            # --------------------------------------------
+
+            connection.execute(
+                text("""
+                    UPDATE PRODUCTS
+                    SET STATUS = 'DELETED'
+                    WHERE P_ID = :product_id
+                      AND U_ID = :user_id
+                """),
+                {
+                    "product_id": product_id,
+                    "user_id": user_id,
+                }
+            )
+
+        return {
+            "message": "Product deleted successfully",
+            "product_id": product_id,
+            "status": "DELETED"
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+
+
+
+# ---------------------------------------------------
+# API: Get Single Product Details
+# ---------------------------------------------------
+
+@router.get("/{product_id}")
+def get_product_details(
+    product_id: int,
+    current_user=Depends(get_current_user)
+):
+    try:
+
+        user_id = current_user["user_id"]
+
+        with engine.connect() as connection:
+
+            # =================================================
+            # 1. GET PRODUCT
+            # =================================================
+
+            product_result = connection.execute(
+                text("""
+                    SELECT
+                        p.P_ID,
+                        p.U_ID,
+                        p.C_ID,
+                        p.PRODUCT_TYPE_ID,
+                        p.TITLE,
+                        p.DESCRIPTION,
+                        p.`CONDITION`,
+                        p.PRICE,
+                        p.AI_PRICE,
+                        p.LOCATION,
+                        p.AI_CONFIDENCE,
+                        p.AI_ANALYZED,
+                        p.AI_PRODUCT_NAME,
+                        p.STATUS,
+                        p.CREATED_AT,
+                        c.CATEGORY_NAME,
+                        pt.PRODUCT_TYPE_NAME
+                    FROM PRODUCTS p
+
+                    INNER JOIN CATEGORIES c
+                        ON p.C_ID = c.C_ID
+
+                    INNER JOIN PRODUCT_TYPES pt
+                        ON p.PRODUCT_TYPE_ID = pt.PRODUCT_TYPE_ID
+
+                    WHERE p.P_ID = :product_id
+                      AND p.U_ID = :user_id
+                    LIMIT 1
+                """),
+                {
+                    "product_id": product_id,
+                    "user_id": user_id,
+                }
+            )
+
+            product = product_result.mappings().first()
+
+            if not product:
+                raise HTTPException(
+                    status_code=404,
+                    detail="Product not found"
+                )
+
+            # =================================================
+            # 2. GET ALL PRODUCT IMAGES
+            # =================================================
+
+            image_result = connection.execute(
+                text("""
+                    SELECT
+                        PI_ID,
+                        IMAGE_PATH
+                    FROM PRODUCT_IMAGES
+                    WHERE P_ID = :product_id
+                    ORDER BY PI_ID ASC
+                """),
+                {
+                    "product_id": product_id,
+                }
+            )
+
+            images = []
+
+            for image in image_result.mappings().all():
+
+                images.append({
+                    "image_id": image["PI_ID"],
+                    "image_path": image["IMAGE_PATH"],
+                })
+
+            # =================================================
+            # 3. GET PRODUCT ATTRIBUTES
+            # =================================================
+
+            attribute_result = connection.execute(
+                text("""
+                    SELECT
+                        P_ID,
+                        ATTRIBUTE_ID,
+                        ATTRIBUTE_VALUE
+                    FROM PRODUCT_ATTRIBUTE_VALUES
+                    WHERE P_ID = :product_id
+                """),
+                {
+                    "product_id": product_id,
+                }
+            )
+
+            attributes = []
+
+            for attribute in attribute_result.mappings().all():
+
+                attributes.append({
+                    "attribute_id": attribute["ATTRIBUTE_ID"],
+                    "value": attribute["ATTRIBUTE_VALUE"],
+                })
+
+            # =================================================
+            # 4. RETURN COMPLETE PRODUCT
+            # =================================================
+
+            return {
+                "product": {
+                    "product_id": product["P_ID"],
+                    "user_id": product["U_ID"],
+
+                    "category_id": product["C_ID"],
+                    "category": product["CATEGORY_NAME"],
+
+                    "product_type_id":
+                        product["PRODUCT_TYPE_ID"],
+                    "product_type":
+                        product["PRODUCT_TYPE_NAME"],
+
+                    "title": product["TITLE"],
+                    "description": product["DESCRIPTION"],
+                    "condition": product["CONDITION"],
+
+                    "price": float(product["PRICE"]),
+                    "ai_price":
+                        float(product["AI_PRICE"])
+                        if product["AI_PRICE"] is not None
+                        else None,
+
+                    "location": product["LOCATION"],
+
+                    "ai_confidence":
+                        float(product["AI_CONFIDENCE"])
+                        if product["AI_CONFIDENCE"] is not None
+                        else None,
+
+                    "ai_analyzed": product["AI_ANALYZED"],
+                    "ai_product_name":
+                        product["AI_PRODUCT_NAME"],
+
+                    "status": product["STATUS"],
+
+                    "created_at":
+                        str(product["CREATED_AT"])
+                        if product["CREATED_AT"] is not None
+                        else None,
+
+                    "images": images,
+
+                    "attributes": attributes,
+                }
+            }
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
+
+
+
+
 # ---------------------------------------------------
 # API: Get Products of Specific User
 # ---------------------------------------------------
@@ -677,6 +1286,7 @@ def get_user_products(user_id: int):
                     LEFT JOIN PRODUCT_IMAGES pi
                         ON p.P_ID = pi.P_ID
                     WHERE p.U_ID = :user_id
+                    AND p.STATUS = 'ACTIVE'
                     ORDER BY p.CREATED_AT DESC
                 """),
                 {

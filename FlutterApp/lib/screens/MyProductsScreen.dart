@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../services/api_service.dart';
 import '../services/auth_service.dart';
+import 'MyProductDetailsScreen.dart';
 
 class MyProductsScreen extends StatefulWidget {
   const MyProductsScreen({super.key});
@@ -224,7 +225,6 @@ class _MyProductsScreenState extends State<MyProductsScreen> {
   Widget buildProductCard(
       Map<String, dynamic> product,
       ) {
-
     final imagePath =
         product["image_path"]?.toString() ?? "";
 
@@ -259,235 +259,224 @@ class _MyProductsScreenState extends State<MyProductsScreen> {
 
     return Card(
       elevation: 2,
-
       margin: const EdgeInsets.only(
         bottom: 16,
       ),
-
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
       ),
-
       clipBehavior: Clip.antiAlias,
 
-      child: Column(
-        crossAxisAlignment:
-        CrossAxisAlignment.start,
+      child: InkWell(
+        onTap: () async {
+          final productId =
+          int.tryParse(
+            product["product_id"]?.toString() ?? "",
+          );
 
-        children: [
+          if (productId == null || productId <= 0) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Invalid product ID"),
+              ),
+            );
+            return;
+          }
 
-          // =================================================
-          // IMAGE
-          // =================================================
-
-          SizedBox(
-            height: 200,
-            width: double.infinity,
-
-            child: imageUrl != null
-                ? Image.network(
-              imageUrl,
-
-              fit: BoxFit.cover,
-
-              errorBuilder:
-                  (context, error, stackTrace) {
-
-                return Container(
-                  color: Colors.grey.shade100,
-
-                  child: const Icon(
-                    Icons.image_outlined,
-                    size: 65,
-                    color: Colors.grey,
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) =>
+                  MyProductDetailsScreen(
+                    productId: productId,
                   ),
-                );
-              },
+            ),
+          );
 
-              loadingBuilder:
-                  (context, child, loadingProgress) {
+          // Reload products when coming back
+          // from product details.
+          loadMyProducts();
+        },
 
-                if (loadingProgress == null) {
-                  return child;
-                }
+        child: Column(
+          crossAxisAlignment:
+          CrossAxisAlignment.start,
 
-                return Container(
-                  color: Colors.grey.shade100,
+          children: [
 
-                  child: const Center(
-                    child:
-                    CircularProgressIndicator(),
-                  ),
-                );
-              },
-            )
-                : Container(
-              color: Colors.grey.shade100,
+            // =================================================
+            // PRODUCT IMAGE
+            // =================================================
 
-              child: const Icon(
-                Icons.image_outlined,
-                size: 65,
-                color: Colors.grey,
+            SizedBox(
+              height: 200,
+              width: double.infinity,
+
+              child: imageUrl != null
+                  ? Image.network(
+                imageUrl,
+                fit: BoxFit.cover,
+
+                errorBuilder:
+                    (context, error, stackTrace) {
+                  return Container(
+                    color: Colors.grey.shade100,
+                    child: const Icon(
+                      Icons.image_outlined,
+                      size: 65,
+                      color: Colors.grey,
+                    ),
+                  );
+                },
+
+                loadingBuilder:
+                    (context, child, loadingProgress) {
+                  if (loadingProgress == null) {
+                    return child;
+                  }
+
+                  return Container(
+                    color: Colors.grey.shade100,
+                    child: const Center(
+                      child:
+                      CircularProgressIndicator(),
+                    ),
+                  );
+                },
+              )
+                  : Container(
+                color: Colors.grey.shade100,
+                child: const Icon(
+                  Icons.image_outlined,
+                  size: 65,
+                  color: Colors.grey,
+                ),
               ),
             ),
-          ),
 
-          // =================================================
-          // PRODUCT INFORMATION
-          // =================================================
+            // =================================================
+            // PRODUCT INFORMATION
+            // =================================================
 
-          Padding(
-            padding: const EdgeInsets.all(14),
+            Padding(
+              padding: const EdgeInsets.all(14),
 
-            child: Column(
-              crossAxisAlignment:
-              CrossAxisAlignment.start,
+              child: Column(
+                crossAxisAlignment:
+                CrossAxisAlignment.start,
 
-              children: [
+                children: [
 
-                // CATEGORY + STATUS
+                  // CATEGORY + STATUS
+                  Row(
+                    mainAxisAlignment:
+                    MainAxisAlignment.spaceBetween,
 
-                Row(
-                  mainAxisAlignment:
-                  MainAxisAlignment.spaceBetween,
+                    children: [
 
-                  children: [
+                      Container(
+                        padding:
+                        const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 5,
+                        ),
 
-                    Container(
-                      padding:
-                      const EdgeInsets.symmetric(
-                        horizontal: 9,
-                        vertical: 5,
-                      ),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius:
+                          BorderRadius.circular(8),
+                        ),
 
-                      decoration: BoxDecoration(
-                        color: Colors.blue.shade50,
-                        borderRadius:
-                        BorderRadius.circular(8),
-                      ),
+                        child: Text(
+                          category,
 
-                      child: Text(
-                        category,
-
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight:
-                          FontWeight.bold,
-                          color:
-                          Colors.blue.shade700,
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight:
+                            FontWeight.bold,
+                            color:
+                            Colors.blue.shade700,
+                          ),
                         ),
                       ),
-                    ),
 
-                    Container(
-                      padding:
-                      const EdgeInsets.symmetric(
-                        horizontal: 9,
-                        vertical: 5,
-                      ),
+                      Container(
+                        padding:
+                        const EdgeInsets.symmetric(
+                          horizontal: 9,
+                          vertical: 5,
+                        ),
 
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius:
-                        BorderRadius.circular(8),
-                      ),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius:
+                          BorderRadius.circular(8),
+                        ),
 
-                      child: Text(
-                        status,
+                        child: Text(
+                          status,
 
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight:
-                          FontWeight.bold,
-                          color:
-                          Colors.green.shade700,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight:
+                            FontWeight.bold,
+                            color:
+                            Colors.green.shade700,
+                          ),
                         ),
                       ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 10),
+
+                  // TITLE
+                  Text(
+                    title,
+
+                    maxLines: 2,
+                    overflow:
+                    TextOverflow.ellipsis,
+
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight:
+                      FontWeight.bold,
                     ),
-                  ],
-                ),
-
-                const SizedBox(height: 10),
-
-                // TITLE
-
-                Text(
-                  title,
-
-                  maxLines: 2,
-                  overflow:
-                  TextOverflow.ellipsis,
-
-                  style: const TextStyle(
-                    fontSize: 19,
-                    fontWeight:
-                    FontWeight.bold,
                   ),
-                ),
 
-                const SizedBox(height: 6),
+                  const SizedBox(height: 6),
 
-                // PRICE
+                  // PRICE
+                  Text(
+                    "₹$price",
 
-                Text(
-                  "₹$price",
-
-                  style: TextStyle(
-                    fontSize: 21,
-                    fontWeight:
-                    FontWeight.bold,
-                    color:
-                    Colors.blue.shade700,
-                  ),
-                ),
-
-                const SizedBox(height: 10),
-
-                // CONDITION
-
-                Row(
-                  children: [
-
-                    Icon(
-                      Icons.verified_outlined,
-                      size: 17,
+                    style: TextStyle(
+                      fontSize: 21,
+                      fontWeight:
+                      FontWeight.bold,
                       color:
-                      Colors.grey.shade600,
+                      Colors.blue.shade700,
                     ),
+                  ),
 
-                    const SizedBox(width: 5),
+                  const SizedBox(height: 10),
 
-                    Text(
-                      condition,
+                  // CONDITION
+                  Row(
+                    children: [
 
-                      style: TextStyle(
-                        fontSize: 13,
+                      Icon(
+                        Icons.verified_outlined,
+                        size: 17,
                         color:
                         Colors.grey.shade600,
                       ),
-                    ),
-                  ],
-                ),
 
-                const SizedBox(height: 6),
+                      const SizedBox(width: 5),
 
-                // LOCATION
-
-                Row(
-                  children: [
-
-                    Icon(
-                      Icons.location_on_outlined,
-                      size: 17,
-                      color:
-                      Colors.grey.shade600,
-                    ),
-
-                    const SizedBox(width: 5),
-
-                    Expanded(
-                      child: Text(
-                        location,
+                      Text(
+                        condition,
 
                         style: TextStyle(
                           fontSize: 13,
@@ -495,14 +484,45 @@ class _MyProductsScreenState extends State<MyProductsScreen> {
                           Colors.grey.shade600,
                         ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+
+                  const SizedBox(height: 6),
+
+                  // LOCATION
+                  Row(
+                    children: [
+
+                      Icon(
+                        Icons.location_on_outlined,
+                        size: 17,
+                        color:
+                        Colors.grey.shade600,
+                      ),
+
+                      const SizedBox(width: 5),
+
+                      Expanded(
+                        child: Text(
+                          location,
+
+                          style: TextStyle(
+                            fontSize: 13,
+                            color:
+                            Colors.grey.shade600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
+
+
 }

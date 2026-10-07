@@ -11,7 +11,10 @@ from fastapi import (
     HTTPException,
     UploadFile,
     File,
+    Depends,
 )
+
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from sqlalchemy import text
 from pydantic import BaseModel, EmailStr
@@ -40,6 +43,48 @@ if not JWT_SECRET_KEY:
 JWT_ALGORITHM = "HS256"
 
 JWT_EXPIRATION_MINUTES = 60
+
+
+security = HTTPBearer()
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+):
+    token = credentials.credentials
+
+    try:
+        payload = jwt.decode(
+            token,
+            JWT_SECRET_KEY,
+            algorithms=[JWT_ALGORITHM]
+        )
+
+        user_id = payload.get("user_id")
+        role = payload.get("role")
+
+        if user_id is None:
+            raise HTTPException(
+                status_code=401,
+                detail="Invalid authentication token"
+            )
+
+        return {
+            "user_id": user_id,
+            "role": role
+        }
+
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication token has expired"
+        )
+
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authentication token"
+        )
 
 
 def create_access_token(user_id: int, role: str):

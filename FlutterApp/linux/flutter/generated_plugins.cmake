@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   file_selector_linux
+  public_file_saver
 )
 
 list(APPEND FLUTTER_FFI_PLUGIN_LIST

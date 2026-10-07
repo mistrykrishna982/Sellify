@@ -1,19 +1,20 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import '../services/auth_service.dart';
+
 import '../services/api_service.dart';
 
-
 class ProductDetailsScreen extends StatefulWidget {
-  final File image;
+  final File? image;
   final List<File> allImages;
+  final String? imagePath;
   final Map<String, dynamic> aiResult;
 
   const ProductDetailsScreen({
     super.key,
-    required this.image,
-    required this.allImages,
+    this.image,
+    this.allImages = const [],
+    this.imagePath,
     required this.aiResult,
   });
 
@@ -22,514 +23,134 @@ class ProductDetailsScreen extends StatefulWidget {
       _ProductDetailsScreenState();
 }
 
-
 class _ProductDetailsScreenState
     extends State<ProductDetailsScreen> {
+  // ============================================================
+  // TEXT CONTROLLERS
+  // ============================================================
 
+  final TextEditingController titleController =
+  TextEditingController();
+
+  final TextEditingController ageController =
+  TextEditingController();
+
+  final TextEditingController descriptionController =
+  TextEditingController();
 
   final TextEditingController locationController =
   TextEditingController();
 
-
-  String condition = "Good";
-
-  List<Map<String, dynamic>> attributes = [];
-
-  Map<int, TextEditingController> attributeControllers = {};
-
-  int? categoryId;
-
-  bool isLoadingAttributes = true;
-
-  String? errorMessage;
+  // ============================================================
+  // STATE
+  // ============================================================
 
   bool isPredictingPrice = false;
 
   int? aiPrice;
 
+  String? uploadedImagePath;
+
+  String condition = "Good";
+
+  // ============================================================
+  // INIT
+  // ============================================================
 
   @override
   void initState() {
     super.initState();
 
-    loadCategoryAttributes();
+    final String aiProductName =
+    (widget.aiResult["product_type"] ?? "")
+        .toString()
+        .trim();
+
+    // Automatically put product type into title.
+    if (aiProductName.isNotEmpty &&
+        aiProductName.toUpperCase() != "UNKNOWN") {
+      titleController.text = aiProductName;
+    }
   }
 
+  // ============================================================
+  // IMAGE URL
+  // ============================================================
+
+  String getImageUrl(String imagePath) {
+    if (imagePath.startsWith("http://") ||
+        imagePath.startsWith("https://")) {
+      return imagePath;
+    }
+
+    return "${ApiService.baseUrl}/$imagePath";
+  }
+
+  // ============================================================
+  // DISPOSE
+  // ============================================================
 
   @override
   void dispose() {
-
+    titleController.dispose();
+    ageController.dispose();
+    descriptionController.dispose();
     locationController.dispose();
-
-    for (final controller in attributeControllers.values) {
-      controller.dispose();
-    }
 
     super.dispose();
   }
 
-
-  Future<void> loadCategoryAttributes() async {
-    try {
-      final productTypeIdValue =
-      widget.aiResult["product_type_id"];
-
-      if (productTypeIdValue == null) {
-        throw Exception(
-          "AI product type ID is not available",
-        );
-      }
-
-      final int productTypeId =
-      productTypeIdValue is int
-          ? productTypeIdValue
-          : int.parse(
-        productTypeIdValue.toString(),
-      );
-
-      final categoryName =
-          widget.aiResult["category"] ??
-              "Electronics";
-
-      final categories =
-      await ApiService.getCategories();
-
-      final matchingCategory =
-      categories.firstWhere(
-            (category) =>
-        category["category_name"]
-            .toString()
-            .toLowerCase() ==
-            categoryName
-                .toString()
-                .toLowerCase(),
-        orElse: () => {
-          "category_id": 5,
-          "category_name": "Electronics",
-        },
-      );
-
-      final int selectedCategoryId =
-      matchingCategory["category_id"];
-
-      final result =
-      await ApiService.getProductTypeAttributes(
-        productTypeId,
-      );
-
-      if (!mounted) return;
-
-      setState(() {
-        categoryId = selectedCategoryId;
-
-        attributes = result;
-
-        isLoadingAttributes = false;
-
-        for (final attribute in attributes) {
-          final int attributeId =
-          attribute["attribute_id"];
-
-          attributeControllers[attributeId] =
-              TextEditingController();
-        }
-      });
-    } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        isLoadingAttributes = false;
-
-        errorMessage =
-        "Failed to load product fields: $e";
-      });
-    }
-  }
-
-
-  bool validateAttributes() {
-
-    for (final attribute in attributes) {
-
-      final bool isRequired =
-          attribute["is_required"] == true;
-
-      if (!isRequired) {
-        continue;
-      }
-
-      final int attributeId =
-      attribute["attribute_id"];
-
-      final controller =
-      attributeControllers[attributeId];
-
-      if (controller == null ||
-          controller.text.trim().isEmpty) {
-
-        final String name =
-        attribute["attribute_name"];
-
-        ScaffoldMessenger.of(context)
-            .showSnackBar(
-          SnackBar(
-            content: Text(
-              "Please enter $name",
-            ),
-          ),
-        );
-
-        return false;
-      }
-    }
-
-    return true;
-  }
-
-
-
-  String getAttributeValue(String attributeName) {
-
-    for (final attribute in attributes) {
-
-      final String name =
-      attribute["attribute_name"]
-          .toString()
-          .trim()
-          .toLowerCase();
-
-      if (name == attributeName.trim().toLowerCase()) {
-
-        final int attributeId =
-        attribute["attribute_id"];
-
-        return attributeControllers[attributeId]
-            ?.text
-            .trim() ??
-            "";
-      }
-    }
-
-    return "";
-  }
-
-
-  String generateProductTitle() {
-    final String productType =
-    (widget.aiResult["product_type"] ?? "Product")
-        .toString()
-        .trim();
-
-    final String brand = getAttributeValue("Brand");
-    final String model = getAttributeValue("Model");
-    final String ram = getAttributeValue("RAM");
-    final String storage = getAttributeValue("Storage");
-
-    final List<String> parts = [];
-
-    // BRAND
-    if (brand.isNotEmpty) {
-      parts.add(brand);
-    }
-
-    // MODEL
-    if (model.isNotEmpty) {
-      parts.add(model);
-    }
-
-    // RAM
-    if (ram.isNotEmpty) {
-      parts.add(ram);
-    }
-
-    // STORAGE
-    if (storage.isNotEmpty) {
-      parts.add(storage);
-    }
-
-    // PRODUCT TYPE
-    if (parts.isNotEmpty) {
-      return parts.join(" ");
-    }
-
-    return "Used $productType";
-  }
-
-
-
-  String generateProductDescription() {
-    final String category =
-    (widget.aiResult["category"] ?? "Product")
-        .toString()
-        .trim();
-
-    final List<String> parts = [];
-
-    for (final attribute in attributes) {
-      final int attributeId =
-      attribute["attribute_id"];
-
-      final String name =
-      attribute["attribute_name"]
-          .toString()
-          .trim();
-
-      final String value =
-          attributeControllers[attributeId]
-              ?.text
-              .trim() ??
-              "";
-
-      if (value.isEmpty) {
-        continue;
-      }
-
-      switch (name.toLowerCase()) {
-
-        case "brand":
-          parts.add(value);
-          break;
-
-        case "model":
-          parts.add(value);
-          break;
-
-        case "ram":
-          parts.add("$value RAM");
-          break;
-
-        case "storage":
-          parts.add("$value storage");
-          break;
-
-        case "processor":
-          parts.add("$value processor");
-          break;
-
-        case "generation":
-          parts.add("$value generation");
-          break;
-
-        case "graphics":
-          parts.add("$value graphics");
-          break;
-
-        case "screen size":
-          parts.add("$value screen size");
-          break;
-
-        case "operating system":
-          parts.add("$value operating system");
-          break;
-
-        case "battery capacity":
-          parts.add("$value battery capacity");
-          break;
-
-        case "battery health":
-          parts.add("$value battery health");
-          break;
-
-        case "camera":
-          parts.add("$value camera");
-          break;
-
-        case "5g support":
-          parts.add("$value 5G support");
-          break;
-
-        case "furniture type":
-          parts.add(value);
-          break;
-
-        case "material":
-          parts.add("$value material");
-          break;
-
-        case "dimensions":
-          parts.add("$value dimensions");
-          break;
-
-        case "colour":
-          parts.add("$value colour");
-          break;
-
-        case "bicycle type":
-          parts.add(value);
-          break;
-
-        case "frame size":
-          parts.add("$value frame size");
-          break;
-
-        case "wheel size":
-          parts.add("$value wheel size");
-          break;
-
-        case "gear count":
-          parts.add("$value gears");
-          break;
-
-        case "brake type":
-          parts.add("$value brakes");
-          break;
-
-        case "device type":
-          parts.add(value);
-          break;
-
-        case "specifications":
-          parts.add(value);
-          break;
-
-        case "age":
-          parts.add("$value years old");
-          break;
-
-        default:
-          parts.add("$value ${name.toLowerCase()}");
-      }
-    }
-
-    if (parts.isEmpty) {
-      return "$category available for sale.";
-    }
-
-    return "${generateProductTitle()}, ${parts.join(", ")}.";
-  }
-
-
-
-
-  Future<void> listProduct() async {
-    if (aiPrice == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "AI price is not available",
-          ),
-        ),
-      );
-
-      return;
-    }
-
-    if (categoryId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "Product category is not available",
-          ),
-        ),
-      );
-
-      return;
-    }
-
-    final String? userIdString =
-    await AuthService.getUserId();
-
-    if (userIdString == null ||
-        userIdString.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "Please login again",
-          ),
-        ),
-      );
-
-      return;
-    }
-
-    final int? userId =
-    int.tryParse(userIdString);
-
-    if (userId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            "Invalid user ID",
-          ),
-        ),
-      );
-
-      return;
-    }
-
-    final Map<int, String> attributeValues =
-    getAttributeValues();
-
-    try {
-      // STEP 1: Upload product image
-      final imageResult =
-      await ApiService.uploadProductImage(
-        widget.image,
-      );
-
-      final String? imagePath =
-      imageResult["image_path"]
-          ?.toString()
-          .replaceAll("\\", "/");
-
-      if (imagePath == null ||
-          imagePath.isEmpty) {
-        throw Exception(
-          "Image path was not returned by server",
-        );
-      }
-
-      // STEP 2: Create product
-      final result =
-      await ApiService.createProduct(
-        userId: userId,
-        categoryId: categoryId!,
-        productTypeId: int.parse(
-          widget.aiResult["product_type_id"].toString(),
-        ),
-        title: generateProductTitle(),
-        description: generateProductDescription(),
-        condition: condition,
-        price: aiPrice!,
-        aiPrice: aiPrice!,
-        location: locationController.text.trim(),
-        imagePath: imagePath,
-        attributes: attributeValues,
-      );
-
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            result["message"] ??
-                "Product listed successfully",
-          ),
-        ),
-      );
-
-      Navigator.pop(context);
-    } catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            "Failed to list product: $e",
-          ),
-        ),
-      );
-    }
-  }
-
-
+  // ============================================================
+  // GET AI PRICE
+  // ============================================================
 
   Future<void> continueToNextStep() async {
-    if (locationController.text.trim().isEmpty) {
+    final String title =
+    titleController.text.trim();
+
+    final String age =
+    ageController.text.trim();
+
+    final String description =
+    descriptionController.text.trim();
+
+    // ----------------------------------------------------------
+    // VALIDATE TITLE
+    // ----------------------------------------------------------
+
+    if (title.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please enter a title"),
+        ),
+      );
+
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // VALIDATE AGE
+    // ----------------------------------------------------------
+
+    if (age.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Please enter the product age"),
+        ),
+      );
+
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // VALIDATE DESCRIPTION
+    // ----------------------------------------------------------
+
+    if (description.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            "Please enter your location",
+            "Please enter product information",
           ),
         ),
       );
@@ -537,37 +158,43 @@ class _ProductDetailsScreenState
       return;
     }
 
-    if (!validateAttributes()) {
-      return;
-    }
+    // ----------------------------------------------------------
+    // CATEGORY
+    // ----------------------------------------------------------
 
-    // Get product attributes dynamically
-    final String brand =
-    getAttributeValue("Brand");
+    final String category =
+    (widget.aiResult["category"] ?? "")
+        .toString()
+        .trim();
 
-    final String model =
-    getAttributeValue("Model");
-
-    final String ram =
-    getAttributeValue("RAM");
-
-    final String storage =
-    getAttributeValue("Storage");
-
-    final String processor =
-    getAttributeValue("Processor");
-
-    final String ageText =
-    getAttributeValue("Age");
-
-    final int? age =
-    int.tryParse(ageText);
-
-    if (age == null) {
+    if (category.isEmpty ||
+        category.toUpperCase() == "UNKNOWN") {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            "Please enter a valid product age",
+            "Product category is not available.",
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    // ----------------------------------------------------------
+    // PRODUCT TYPE
+    // ----------------------------------------------------------
+
+    final String productType =
+    (widget.aiResult["product_type"] ?? "")
+        .toString()
+        .trim();
+
+    if (productType.isEmpty ||
+        productType.toUpperCase() == "UNKNOWN") {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Product type is not available.",
           ),
         ),
       );
@@ -580,38 +207,75 @@ class _ProductDetailsScreenState
     });
 
     try {
-      final String category =
-          widget.aiResult["category"] ??
-              "Electronics";
+      // ========================================================
+      // 1. GET IMAGE PATH
+      // ========================================================
 
-      final String productType =
-      (widget.aiResult["product_type"] ?? "Unknown")
-          .toString()
-          .trim();
+      String? imagePath = widget.imagePath;
 
-      final predictedPrice =
+      // Admin-approved flow already has an image on the server.
+      if (imagePath != null &&
+          imagePath.isNotEmpty) {
+        imagePath =
+            imagePath.replaceAll("\\", "/");
+      }
+
+      // Normal AI flow has a local image.
+      if ((imagePath == null ||
+          imagePath.isEmpty) &&
+          widget.image != null) {
+        final imageResult =
+        await ApiService.uploadProductImage(
+          widget.image!,
+        );
+
+        imagePath =
+            imageResult["image_path"]
+                ?.toString()
+                .replaceAll("\\", "/");
+      }
+
+      if (imagePath == null ||
+          imagePath.isEmpty) {
+        throw Exception(
+          "Image path is not available",
+        );
+      }
+
+      uploadedImagePath = imagePath;
+
+      // ========================================================
+      // 2. ASK BACKEND FOR AI PRICE
+      // ========================================================
+
+      final int predictedPrice =
       await ApiService.predictPrice(
         category: category,
         productType: productType,
-        brand: brand,
-        model: model,
+        title: title,
         age: age,
+        description: description,
         condition: condition,
-        ram: ram,
-        storage: storage,
-        processor: processor,
       );
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         aiPrice = predictedPrice;
         isPredictingPrice = false;
       });
 
+      // ========================================================
+      // 3. SHOW PRICE
+      // ========================================================
+
       showPricePredictionDialog();
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
       setState(() {
         isPredictingPrice = false;
@@ -627,32 +291,29 @@ class _ProductDetailsScreenState
     }
   }
 
+  // ============================================================
+  // AI PRICE DIALOG
+  // ============================================================
 
   void showPricePredictionDialog() {
-
     if (aiPrice == null) {
       return;
     }
 
-
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) {
-
+      builder: (dialogContext) {
         return AlertDialog(
-
           title: const Text(
-            "AI Price Prediction",
+            "AI Suggested Price",
             style: TextStyle(
               fontWeight: FontWeight.bold,
             ),
           ),
-
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-
               const Icon(
                 Icons.auto_awesome,
                 size: 50,
@@ -661,7 +322,7 @@ class _ProductDetailsScreenState
               const SizedBox(height: 15),
 
               const Text(
-                "Our AI suggests the following price for your product:",
+                "Our AI suggests this price based on the product information.",
                 textAlign: TextAlign.center,
               ),
 
@@ -674,41 +335,30 @@ class _ProductDetailsScreenState
                   fontWeight: FontWeight.bold,
                 ),
               ),
-
-              const SizedBox(height: 15),
-
-              const Text(
-                "Would you like to list this product at this price?",
-                textAlign: TextAlign.center,
-              ),
             ],
           ),
-
           actions: [
-
             TextButton(
               onPressed: () {
+                Navigator.pop(dialogContext);
 
-                Navigator.pop(context);
-
-                Navigator.pop(this.context);
+                showManualPriceDialog();
               },
-
               child: const Text(
-                "NO, DON'T LIST",
+                "ENTER MY OWN PRICE",
               ),
             ),
 
             ElevatedButton(
-              onPressed: () async {
+              onPressed: () {
+                Navigator.pop(dialogContext);
 
-                Navigator.pop(context);
-
-                await listProduct();
+                listProduct(
+                  finalPrice: aiPrice!,
+                );
               },
-
               child: const Text(
-                "YES, LIST PRODUCT",
+                "ACCEPT PRICE",
               ),
             ),
           ],
@@ -717,139 +367,272 @@ class _ProductDetailsScreenState
     );
   }
 
+  // ============================================================
+  // MANUAL PRICE
+  // ============================================================
 
+  void showManualPriceDialog() {
+    final TextEditingController priceController =
+    TextEditingController();
 
-  Map<int, String> getAttributeValues() {
-    final Map<int, String> values = {};
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text(
+            "Enter Your Price",
+          ),
+          content: TextField(
+            controller: priceController,
+            keyboardType:
+            TextInputType.number,
+            decoration:
+            const InputDecoration(
+              labelText: "Price",
+              prefixText: "₹ ",
+              border:
+              OutlineInputBorder(),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+              },
+              child: const Text("CANCEL"),
+            ),
 
-    for (final attribute in attributes) {
-      final int attributeId =
-      attribute["attribute_id"];
+            ElevatedButton(
+              onPressed: () {
+                final int? price =
+                int.tryParse(
+                  priceController.text.trim(),
+                );
 
-      final String value =
-          attributeControllers[attributeId]
-              ?.text
-              .trim() ??
-              "";
+                if (price == null ||
+                    price <= 0) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        "Enter a valid price",
+                      ),
+                    ),
+                  );
 
-      if (value.isNotEmpty) {
-        values[attributeId] = value;
-      }
-    }
+                  return;
+                }
 
-    return values;
-  }
+                Navigator.pop(dialogContext);
 
-
-
-  String getAttributeSummary() {
-
-    final List<String> values = [];
-
-    for (final attribute in attributes) {
-
-      final int attributeId =
-      attribute["attribute_id"];
-
-      final String name =
-      attribute["attribute_name"];
-
-      final String value =
-          attributeControllers[attributeId]
-              ?.text
-              .trim() ??
-              "";
-
-      if (value.isNotEmpty) {
-
-        values.add(
-          "$name: $value",
+                listProduct(
+                  finalPrice: price,
+                );
+              },
+              child: const Text(
+                "CONTINUE",
+              ),
+            ),
+          ],
         );
-      }
-    }
-
-    return values.isEmpty
-        ? "No additional information"
-        : values.join("\n");
-  }
-
-
-  Widget buildDynamicAttributeField(
-      Map<String, dynamic> attribute) {
-
-    final int attributeId =
-    attribute["attribute_id"];
-
-    final String name =
-    attribute["attribute_name"];
-
-    final String type =
-    attribute["attribute_type"];
-
-    final bool required =
-        attribute["is_required"] == true;
-
-
-    final controller =
-    attributeControllers[attributeId]!;
-
-
-    TextInputType keyboardType =
-        TextInputType.text;
-
-
-    if (type == "NUMBER") {
-      keyboardType =
-          TextInputType.number;
-    }
-
-
-    return Padding(
-      padding: const EdgeInsets.only(
-        bottom: 18,
-      ),
-
-      child: TextField(
-
-        controller: controller,
-
-        keyboardType: keyboardType,
-
-        decoration: InputDecoration(
-
-          labelText:
-          required
-              ? "$name *"
-              : name,
-
-          hintText:
-          "Enter $name",
-
-          border:
-          const OutlineInputBorder(),
-        ),
-      ),
+      },
     );
   }
 
+  // ============================================================
+  // CREATE PRODUCT
+  // ============================================================
+
+  Future<void> listProduct({
+    required int finalPrice,
+  }) async {
+    try {
+      // ========================================================
+      // 1. GET IMAGE PATH
+      // ========================================================
+
+      String? imagePath =
+          uploadedImagePath;
+
+      // Admin-approved notification flow.
+      if (imagePath == null ||
+          imagePath.isEmpty) {
+        imagePath = widget.imagePath;
+      }
+
+      if (imagePath != null &&
+          imagePath.isNotEmpty) {
+        imagePath =
+            imagePath.replaceAll("\\", "/");
+      }
+
+      // Normal AI flow.
+      if ((imagePath == null ||
+          imagePath.isEmpty) &&
+          widget.image != null) {
+        final imageResult =
+        await ApiService.uploadProductImage(
+          widget.image!,
+        );
+
+        imagePath =
+            imageResult["image_path"]
+                ?.toString()
+                .replaceAll("\\", "/");
+      }
+
+      if (imagePath == null ||
+          imagePath.isEmpty) {
+        throw Exception(
+          "Image path is not available",
+        );
+      }
+
+      // ========================================================
+      // 2. CATEGORY ID
+      // ========================================================
+
+      final int categoryId =
+          int.tryParse(
+            widget.aiResult["category_id"]
+                ?.toString() ??
+                "",
+          ) ??
+              0;
+
+      if (categoryId <= 0) {
+        throw Exception(
+          "Category ID is not available.",
+        );
+      }
+
+      // ========================================================
+      // 3. PRODUCT TYPE ID
+      // ========================================================
+
+      final int productTypeId =
+          int.tryParse(
+            widget.aiResult["product_type_id"]
+                ?.toString() ??
+                "",
+          ) ??
+              0;
+
+      if (productTypeId <= 0) {
+        throw Exception(
+          "Product type ID is not available.",
+        );
+      }
+
+      // ========================================================
+      // 4. AI PRODUCT NAME
+      // ========================================================
+
+      final String aiProductName =
+      (widget.aiResult["product_type"] ?? "")
+          .toString()
+          .trim();
+
+      // ========================================================
+      // 5. AI CONFIDENCE
+      // ========================================================
+
+      final double? aiConfidence =
+      double.tryParse(
+        widget.aiResult["confidence"]
+            ?.toString() ??
+            "",
+      );
+
+      // ========================================================
+      // 6. DESCRIPTION
+      // ========================================================
+
+      final String finalDescription =
+          "Age: ${ageController.text.trim()}\n"
+          "${descriptionController.text.trim()}";
+
+      // ========================================================
+      // 7. CREATE PRODUCT
+      // ========================================================
+
+      final result =
+      await ApiService.createProduct(
+        categoryId: categoryId,
+
+        productTypeId: productTypeId,
+
+        title:
+        titleController.text.trim(),
+
+        description:
+        finalDescription,
+
+        condition:
+        condition,
+
+        price:
+        finalPrice,
+
+        aiPrice:
+        aiPrice ?? finalPrice,
+
+        location:
+        locationController.text.trim(),
+
+        imagePath:
+        imagePath,
+
+        aiProductName:
+        aiProductName.isEmpty
+            ? null
+            : aiProductName,
+
+        aiConfidence:
+        aiConfidence,
+
+        attributes: {},
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        SnackBar(
+          content: Text(
+            result["message"] ??
+                "Product listed successfully",
+          ),
+        ),
+      );
+
+      Navigator.pop(context);
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        SnackBar(
+          content: Text(
+            "Failed to list product: $e",
+          ),
+        ),
+      );
+    }
+  }
+
+  // ============================================================
+  // UI
+  // ============================================================
 
   @override
   Widget build(BuildContext context) {
-
-    final String category =
-        widget.aiResult["category"] ??
-            "Electronics";
-
-
-    final String productType =
-        widget.aiResult["product_type"] ??
-            "Unknown";
-
-
     return Scaffold(
-
       appBar: AppBar(
-
         title: const Text(
           "Product Details",
           style: TextStyle(
@@ -858,243 +641,195 @@ class _ProductDetailsScreenState
         ),
       ),
 
-
       body: SingleChildScrollView(
-
         padding:
         const EdgeInsets.all(20),
 
         child: Column(
-
           crossAxisAlignment:
           CrossAxisAlignment.start,
 
           children: [
-
-            const Text(
-              "Product Details",
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-
-
-            const SizedBox(height: 8),
-
-
-            Text(
-              "Enter information about the product you want to sell.",
-              style: TextStyle(
-                fontSize: 15,
-                color: Colors.grey.shade600,
-              ),
-            ),
-
-
-            const SizedBox(height: 25),
-
-
+            // ==================================================
             // IMAGE
-
-            // IMAGE
-
-            // IMAGES
+            // ==================================================
 
             ClipRRect(
-              borderRadius: BorderRadius.circular(20),
+              borderRadius:
+              BorderRadius.circular(20),
 
               child: SizedBox(
-
                 height: 220,
                 width: double.infinity,
 
-                child: PageView.builder(
-                  itemCount: widget.allImages.length,
+                child:
+                widget.allImages.isNotEmpty
+                    ? PageView.builder(
+                  itemCount:
+                  widget.allImages.length,
 
-                  itemBuilder: (context, index) {
+                  itemBuilder:
+                      (context, index) {
                     return Image.file(
-                      widget.allImages[index],
-                      width: double.infinity,
+                      widget
+                          .allImages[index],
+
+                      width:
+                      double.infinity,
+
                       height: 220,
-                      fit: BoxFit.cover,
+
+                      fit:
+                      BoxFit.cover,
                     );
                   },
+                )
+                    : widget.image != null
+                    ? Image.file(
+                  widget.image!,
+
+                  width:
+                  double.infinity,
+
+                  height: 220,
+
+                  fit:
+                  BoxFit.cover,
+                )
+                    : widget.imagePath != null &&
+                    widget.imagePath!
+                        .isNotEmpty
+                    ? Image.network(
+                  getImageUrl(
+                    widget
+                        .imagePath!,
+                  ),
+
+                  width:
+                  double.infinity,
+
+                  height: 220,
+
+                  fit:
+                  BoxFit.cover,
+                )
+                    : const Center(
+                  child: Icon(
+                    Icons
+                        .image_not_supported,
+                    size: 60,
+                    color:
+                    Colors.grey,
+                  ),
                 ),
               ),
             ),
-
 
             const SizedBox(height: 25),
 
-
-            // AI PRODUCT TYPE
+            // ==================================================
+            // TITLE
+            // ==================================================
 
             const Text(
-              "AI Product Type",
+              "Title",
               style: TextStyle(
                 fontWeight:
                 FontWeight.bold,
               ),
             ),
 
-
             const SizedBox(height: 8),
 
-
-            Container(
-
-              width:
-              double.infinity,
-
-              padding:
-              const EdgeInsets.all(15),
+            TextField(
+              controller:
+              titleController,
 
               decoration:
-              BoxDecoration(
+              const InputDecoration(
+                hintText:
+                "Enter product title",
 
-                borderRadius:
-                BorderRadius.circular(12),
-
-                color:
-                Colors.grey.shade100,
-              ),
-
-              child: Text(
-                productType,
-
-                style:
-                const TextStyle(
-                  fontSize: 16,
-                ),
+                border:
+                OutlineInputBorder(),
               ),
             ),
-
 
             const SizedBox(height: 20),
 
-
-            // CATEGORY
+            // ==================================================
+            // AGE
+            // ==================================================
 
             const Text(
-              "Category",
+              "Age",
               style: TextStyle(
                 fontWeight:
                 FontWeight.bold,
               ),
             ),
-
 
             const SizedBox(height: 8),
 
+            TextField(
+              controller:
+              ageController,
 
-            Container(
-
-              width:
-              double.infinity,
-
-              padding:
-              const EdgeInsets.all(15),
+              keyboardType:
+              TextInputType.number,
 
               decoration:
-              BoxDecoration(
+              const InputDecoration(
+                hintText:
+                "Example: 2 years",
 
-                borderRadius:
-                BorderRadius.circular(12),
-
-                color:
-                Colors.grey.shade100,
-              ),
-
-              child: Text(
-                category,
-
-                style:
-                const TextStyle(
-                  fontSize: 16,
-                  fontWeight:
-                  FontWeight.w600,
-                ),
+                border:
+                OutlineInputBorder(),
               ),
             ),
 
-            const SizedBox(height: 18),
-            // DYNAMIC ATTRIBUTES
+            const SizedBox(height: 20),
+
+            // ==================================================
+            // DESCRIPTION
+            // ==================================================
 
             const Text(
-              "Product Information",
+              "Description",
               style: TextStyle(
-                fontSize: 18,
                 fontWeight:
                 FontWeight.bold,
               ),
             ),
 
+            const SizedBox(height: 8),
 
-            const SizedBox(height: 12),
+            TextField(
+              controller:
+              descriptionController,
 
+              maxLines: 10,
 
-            if (isLoadingAttributes)
+              decoration:
+              const InputDecoration(
+                hintText:
+                "Enter product information\n\n"
+                    "Example:\n"
+                    "Battery Life: 12 hours\n"
+                    "RAM: 8 GB\n"
+                    "Storage: 256 GB\n"
+                    "Color: Black",
 
-              const Center(
-                child:
-                Padding(
-                  padding:
-                  EdgeInsets.all(20),
-
-                  child:
-                  CircularProgressIndicator(),
-                ),
-              )
-
-
-            else if (errorMessage != null)
-
-              Container(
-
-                width:
-                double.infinity,
-
-                padding:
-                const EdgeInsets.all(15),
-
-                decoration:
-                BoxDecoration(
-
-                  color:
-                  Colors.red.shade50,
-
-                  borderRadius:
-                  BorderRadius.circular(12),
-                ),
-
-                child: Text(
-                  errorMessage!,
-
-                  style:
-                  const TextStyle(
-                    color: Colors.red,
-                  ),
-                ),
-              )
-
-
-            else
-
-              Column(
-                children:
-                attributes
-                    .map(
-                  buildDynamicAttributeField,
-                )
-                    .toList(),
+                border:
+                OutlineInputBorder(),
               ),
+            ),
 
+            const SizedBox(height: 25),
 
-            const SizedBox(height: 5),
-
-
+            // ==================================================
             // CONDITION
+            // ==================================================
 
             const Text(
               "Condition",
@@ -1104,13 +839,11 @@ class _ProductDetailsScreenState
               ),
             ),
 
-
             const SizedBox(height: 8),
 
-
             DropdownButtonFormField<String>(
-
-              value: condition,
+              value:
+              condition,
 
               decoration:
               const InputDecoration(
@@ -1119,7 +852,6 @@ class _ProductDetailsScreenState
               ),
 
               items: const [
-
                 DropdownMenuItem(
                   value: "New",
                   child:
@@ -1151,89 +883,67 @@ class _ProductDetailsScreenState
                 ),
               ],
 
-              onChanged: (value) {
-
-                if (value != null) {
-
-                  setState(() {
-                    condition = value;
-                  });
+              onChanged:
+                  (value) {
+                if (value == null) {
+                  return;
                 }
+
+                setState(() {
+                  condition =
+                      value;
+                });
               },
             ),
 
-
-            const SizedBox(height: 18),
-
-
-            // LOCATION
-
-            TextField(
-
-              controller:
-              locationController,
-
-              decoration:
-              const InputDecoration(
-
-                labelText:
-                "Location",
-
-                hintText:
-                "Example: Ahmedabad",
-
-                border:
-                OutlineInputBorder(),
-              ),
-            ),
-
-
             const SizedBox(height: 30),
 
-
-            // CONTINUE
+            // ==================================================
+            // GET AI PRICE
+            // ==================================================
 
             SizedBox(
-
               width:
               double.infinity,
 
               child:
               ElevatedButton(
-
                 onPressed:
-                isLoadingAttributes ||
-                    isPredictingPrice
+                isPredictingPrice
                     ? null
                     : continueToNextStep,
 
                 style:
                 ElevatedButton.styleFrom(
-
                   padding:
                   const EdgeInsets.symmetric(
                     vertical: 17,
                   ),
                 ),
 
-                child: isPredictingPrice
+                child:
+                isPredictingPrice
                     ? const SizedBox(
                   height: 22,
                   width: 22,
-                  child: CircularProgressIndicator(
+
+                  child:
+                  CircularProgressIndicator(
                     strokeWidth: 2,
                   ),
                 )
                     : const Text(
                   "GET AI PRICE",
-                  style: TextStyle(
+
+                  style:
+                  TextStyle(
                     fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                    fontWeight:
+                    FontWeight.bold,
                   ),
                 ),
               ),
             ),
-
           ],
         ),
       ),

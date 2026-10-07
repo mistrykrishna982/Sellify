@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'auth_service.dart';
 
+
 class ApiService {
   static const String baseUrl = "http://10.210.212.48:8000";
 
@@ -343,7 +344,7 @@ class ApiService {
       int productTypeId,
       ) async {
     final uri = Uri.parse(
-      "$baseUrl/categories/product-types/$productTypeId/attributes",
+      "$baseUrl/product-types/$productTypeId/attributes",
     );
 
     final response = await http.get(uri);
@@ -435,23 +436,16 @@ class ApiService {
     );
   }
 
-
-
-
   static Future<int> predictPrice({
     required String category,
     required String productType,
-    required String brand,
-    required String model,
-    required int age,
+    required String title,
+    required String age,
+    required String description,
     required String condition,
-    required String ram,
-    required String storage,
-    required String processor,
   }) async {
-    final uri = Uri.parse(
-      "$baseUrl/products/predict-price",
-    );
+    final uri =
+    Uri.parse("$baseUrl/products/predict-price");
 
     final response = await http.post(
       uri,
@@ -461,32 +455,110 @@ class ApiService {
       body: jsonEncode({
         "category": category,
         "product_type": productType,
-        "brand": brand,
-        "model": model,
+        "title": title,
         "age": age,
+        "description": description,
         "condition": condition,
-        "ram": ram,
-        "storage": storage,
-        "processor": processor,
       }),
     );
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
+    Map<String, dynamic> data;
 
-      return (data["ai_price"] as num).toInt();
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception(
+        "Invalid server response: ${response.body}",
+      );
+    }
+
+    if (response.statusCode == 200) {
+      final price = data["ai_price"];
+
+      if (price == null) {
+        throw Exception(
+          "AI price was not returned by server",
+        );
+      }
+
+      return int.parse(
+        price.toString(),
+      );
     }
 
     throw Exception(
-      "Failed to predict price: "
-          "${response.statusCode} - ${response.body}",
+      data["detail"] ??
+          data["message"] ??
+          "Failed to predict price",
+    );
+  }
+
+
+
+  // ============================================================
+// RESOLVE / CREATE PRODUCT CLASSIFICATION
+// ============================================================
+
+  static Future<Map<String, dynamic>>
+  resolveProductClassification({
+    required String category,
+    required String productType,
+  }) async {
+
+    final uri = Uri.parse(
+      "$baseUrl/products/resolve-classification",
+    );
+
+    final accessToken =
+    await AuthService.getAccessToken();
+
+    if (accessToken == null ||
+        accessToken.isEmpty) {
+      throw Exception(
+        "Login token not found",
+      );
+    }
+
+    final response = await http.post(
+      uri,
+
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $accessToken",
+      },
+
+      body: jsonEncode({
+        "category": category,
+        "product_type": productType,
+      }),
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception(
+        "Invalid server response: ${response.body}",
+      );
+    }
+
+    if (response.statusCode == 200 ||
+        response.statusCode == 201) {
+
+      return Map<String, dynamic>.from(data);
+    }
+
+    throw Exception(
+      data["detail"] ??
+          data["message"] ??
+          "Failed to resolve product classification",
     );
   }
 
 
 
   static Future<Map<String, dynamic>> createProduct({
-    required int userId,
     required int categoryId,
     required int productTypeId,
     required String title,
@@ -496,19 +568,31 @@ class ApiService {
     required int aiPrice,
     required String location,
     required String imagePath,
+    required String? aiProductName,
+    required double? aiConfidence,
     required Map<int, String> attributes,
   }) async {
     final uri = Uri.parse(
       "$baseUrl/products/create",
     );
 
+    final accessToken =
+    await AuthService.getAccessToken();
+
+    if (accessToken == null ||
+        accessToken.isEmpty) {
+      throw Exception(
+        "Login token not found",
+      );
+    }
+
     final response = await http.post(
       uri,
       headers: {
         "Content-Type": "application/json",
+        "Authorization": "Bearer $accessToken",
       },
       body: jsonEncode({
-        "user_id": userId,
         "category_id": categoryId,
         "product_type_id": productTypeId,
         "title": title,
@@ -518,6 +602,8 @@ class ApiService {
         "ai_price": aiPrice,
         "location": location,
         "image_path": imagePath,
+        "ai_product_name": aiProductName,
+        "ai_confidence": aiConfidence,
         "attributes": attributes.map(
               (key, value) => MapEntry(
             key.toString(),
@@ -527,19 +613,288 @@ class ApiService {
       }),
     );
 
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception(
+        "Invalid server response: ${response.body}",
+      );
+    }
+
     if (response.statusCode == 200 ||
         response.statusCode == 201) {
-      return Map<String, dynamic>.from(
-        jsonDecode(response.body),
+      return Map<String, dynamic>.from(data);
+    }
+
+    throw Exception(
+      data["detail"] ??
+          data["message"] ??
+          "Failed to create product",
+    );
+  }
+
+
+
+  // ============================================================
+  // CLASSIFICATION REQUEST
+  // ============================================================
+
+  static Future<Map<String, dynamic>>
+  submitClassificationRequest({
+    required String categoryName,
+    required String productTypeName,
+    required String imagePath,
+  }) async {
+    final uri = Uri.parse(
+      "$baseUrl/classification-requests",
+    );
+
+    final accessToken =
+    await AuthService.getAccessToken();
+
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception("Login token not found");
+    }
+
+    final response = await http.post(
+      uri,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $accessToken",
+      },
+      body: jsonEncode({
+        "category_name": categoryName,
+        "product_type_name": productTypeName,
+        "image_path": imagePath,
+      }),
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception(
+        "Invalid server response: ${response.body}",
+      );
+    }
+
+    if (response.statusCode == 200 ||
+        response.statusCode == 201) {
+      return Map<String, dynamic>.from(data);
+    }
+
+    throw Exception(
+      data["detail"] ??
+          data["message"] ??
+          "Failed to submit classification request",
+    );
+  }
+
+
+  // ============================================================
+  // CHECK CLASSIFICATION REQUEST
+  // ============================================================
+
+  static Future<Map<String, dynamic>>
+  getClassificationRequest(
+      int requestId,
+      ) async {
+    final uri = Uri.parse(
+      "$baseUrl/classification-requests/$requestId",
+    );
+
+    final accessToken =
+    await AuthService.getAccessToken();
+
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception("Login token not found");
+    }
+
+    final response = await http.get(
+      uri,
+      headers: {
+        "Authorization": "Bearer $accessToken",
+      },
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception(
+        "Invalid server response: ${response.body}",
+      );
+    }
+
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(data);
+    }
+
+    throw Exception(
+      data["detail"] ??
+          data["message"] ??
+          "Failed to check classification request",
+    );
+  }
+
+
+  // ============================================================
+  // ADMIN: GET PENDING CLASSIFICATION REQUESTS
+  // ============================================================
+
+  static Future<List<Map<String, dynamic>>>
+  getPendingClassificationRequests() async {
+    final uri = Uri.parse(
+      "$baseUrl/classification-requests/admin/pending",
+    );
+
+    final accessToken =
+    await AuthService.getAccessToken();
+
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception("Admin login token not found");
+    }
+
+    final response = await http.get(
+      uri,
+      headers: {
+        "Authorization": "Bearer $accessToken",
+      },
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception(
+        "Invalid server response: ${response.body}",
+      );
+    }
+
+    if (response.statusCode == 200) {
+      return List<Map<String, dynamic>>.from(
+        data["requests"] ?? [],
       );
     }
 
     throw Exception(
-      "Failed to create product: "
-          "${response.statusCode} - ${response.body}",
+      data["detail"] ??
+          data["message"] ??
+          "Failed to load classification requests",
     );
   }
 
+
+  // ============================================================
+  // ADMIN: APPROVE CLASSIFICATION REQUEST
+  // ============================================================
+
+  static Future<Map<String, dynamic>>
+  approveClassificationRequest(
+      int requestId,
+      ) async {
+    final uri = Uri.parse(
+      "$baseUrl/classification-requests/admin/"
+          "$requestId/approve",
+    );
+
+    final accessToken =
+    await AuthService.getAccessToken();
+
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception("Admin login token not found");
+    }
+
+    final response = await http.post(
+      uri,
+      headers: {
+        "Authorization": "Bearer $accessToken",
+      },
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception(
+        "Invalid server response: ${response.body}",
+      );
+    }
+
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(data);
+    }
+
+    throw Exception(
+      data["detail"] ??
+          data["message"] ??
+          "Failed to approve classification request",
+    );
+  }
+
+
+  // ============================================================
+  // ADMIN: REJECT CLASSIFICATION REQUEST
+  // ============================================================
+  static Future<Map<String, dynamic>>
+  rejectClassificationRequest(
+      int requestId, {
+        String? adminNote,
+      }) async {
+
+    final uri = Uri.parse(
+      "$baseUrl/classification-requests/admin/"
+          "$requestId/reject",
+    );
+
+    final accessToken =
+    await AuthService.getAccessToken();
+
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception(
+        "Admin login token not found",
+      );
+    }
+
+    final response = await http.post(
+      uri,
+
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $accessToken",
+      },
+
+      body: jsonEncode({
+        "admin_note": adminNote,
+      }),
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception(
+        "Invalid server response: ${response.body}",
+      );
+    }
+
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(data);
+    }
+
+    throw Exception(
+      data["detail"] ??
+          data["message"] ??
+          "Failed to reject classification request",
+    );
+  }
 
   static Future<List<Map<String, dynamic>>> getProducts({
     required String userId,
@@ -597,6 +952,58 @@ class ApiService {
           "${response.statusCode} - ${response.body}",
     );
   }
+
+
+
+  // ============================================================
+// GET SINGLE MY PRODUCT DETAILS
+// ============================================================
+
+  static Future<Map<String, dynamic>> getMyProductDetails({
+    required int productId,
+  }) async {
+
+    final accessToken =
+    await AuthService.getAccessToken();
+
+    if (accessToken == null ||
+        accessToken.isEmpty) {
+      throw Exception("Login token not found");
+    }
+
+    final response = await http.get(
+      Uri.parse(
+        "$baseUrl/products/$productId",
+      ),
+      headers: {
+        "Authorization":
+        "Bearer $accessToken",
+      },
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception(
+        "Invalid server response: ${response.body}",
+      );
+    }
+
+    if (response.statusCode == 200) {
+
+      return Map<String, dynamic>.from(
+        data["product"],
+      );
+    }
+
+    throw Exception(
+      data["detail"] ??
+          "Failed to load product details",
+    );
+  }
+
 
 
   static Future<String> requestForgotPasswordOtp({
@@ -1080,6 +1487,55 @@ class ApiService {
 
 
   static Future<Map<String, dynamic>>
+  approveUnsupportedProduct({
+    required int unsupportedProductId,
+  }) async {
+    final uri = Uri.parse(
+      "$baseUrl/unsupported-products/"
+          "$unsupportedProductId/approve",
+    );
+
+    final accessToken =
+    await AuthService.getAccessToken();
+
+    if (accessToken == null ||
+        accessToken.isEmpty) {
+      throw Exception(
+        "Admin login token not found",
+      );
+    }
+
+    final response = await http.post(
+      uri,
+      headers: {
+        "Authorization": "Bearer $accessToken",
+      },
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception(
+        "Invalid server response: ${response.body}",
+      );
+    }
+
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(data);
+    }
+
+    throw Exception(
+      data["detail"] ??
+          data["message"] ??
+          "Failed to approve unsupported product",
+    );
+  }
+
+
+
+  static Future<Map<String, dynamic>>
   removeAttributeFromProductType({
     required int productTypeId,
     required int attributeId,
@@ -1126,5 +1582,461 @@ class ApiService {
     );
   }
 
+
+  static Future<List<String>> getReportTables() async {
+    final uri = Uri.parse(
+      "$baseUrl/admin/reports/tables",
+    );
+
+    final accessToken =
+    await AuthService.getAccessToken();
+
+    if (accessToken == null ||
+        accessToken.isEmpty) {
+      throw Exception(
+        "Admin login token not found",
+      );
+    }
+
+    final response = await http.get(
+      uri,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $accessToken",
+      },
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception(
+        "Invalid server response: ${response.body}",
+      );
+    }
+
+    if (response.statusCode == 200) {
+      return List<String>.from(
+        data["tables"] ?? [],
+      );
+    }
+
+    throw Exception(
+      data["detail"] ??
+          "Failed to load report tables",
+    );
+  }
+
+
+  static Future<Map<String, dynamic>> generateReport({
+    required String tableName,
+    required String period,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    final queryParameters = <String, String>{
+      "table_name": tableName,
+      "period": period,
+    };
+
+    if (startDate != null) {
+      queryParameters["start_date"] =
+      "${startDate.year.toString().padLeft(4, '0')}-"
+          "${startDate.month.toString().padLeft(2, '0')}-"
+          "${startDate.day.toString().padLeft(2, '0')}";
+    }
+
+    if (endDate != null) {
+      queryParameters["end_date"] =
+      "${endDate.year.toString().padLeft(4, '0')}-"
+          "${endDate.month.toString().padLeft(2, '0')}-"
+          "${endDate.day.toString().padLeft(2, '0')}";
+    }
+
+    final uri = Uri.parse(
+      "$baseUrl/admin/reports",
+    ).replace(
+      queryParameters: queryParameters,
+    );
+
+    final accessToken =
+    await AuthService.getAccessToken();
+
+    if (accessToken == null ||
+        accessToken.isEmpty) {
+      throw Exception(
+        "Admin login token not found",
+      );
+    }
+
+    final response = await http.get(
+      uri,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $accessToken",
+      },
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception(
+        "Invalid server response: ${response.body}",
+      );
+    }
+
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(data);
+    }
+
+    throw Exception(
+      data["detail"] ??
+          "Failed to generate report",
+    );
+  }
+
+
+
+
+  static Future<List<int>> downloadReportPdf({
+    required String tableName,
+    required String period,
+    DateTime? startDate,
+    DateTime? endDate,
+  }) async {
+    final queryParameters = <String, String>{
+      "table_name": tableName,
+      "period": period,
+    };
+
+    if (startDate != null) {
+      queryParameters["start_date"] =
+      "${startDate.year.toString().padLeft(4, '0')}-"
+          "${startDate.month.toString().padLeft(2, '0')}-"
+          "${startDate.day.toString().padLeft(2, '0')}";
+    }
+
+    if (endDate != null) {
+      queryParameters["end_date"] =
+      "${endDate.year.toString().padLeft(4, '0')}-"
+          "${endDate.month.toString().padLeft(2, '0')}-"
+          "${endDate.day.toString().padLeft(2, '0')}";
+    }
+
+    final uri = Uri.parse(
+      "$baseUrl/admin/reports/pdf",
+    ).replace(
+      queryParameters: queryParameters,
+    );
+
+    final accessToken =
+    await AuthService.getAccessToken();
+
+    if (accessToken == null ||
+        accessToken.isEmpty) {
+      throw Exception(
+        "Admin login token not found",
+      );
+    }
+
+    final response = await http.get(
+      uri,
+      headers: {
+        "Authorization": "Bearer $accessToken",
+      },
+    );
+
+    if (response.statusCode == 200) {
+      return response.bodyBytes;
+    }
+
+    String errorMessage;
+
+    try {
+      final data = jsonDecode(response.body);
+      errorMessage =
+          data["detail"] ??
+              data["message"] ??
+              "Failed to download PDF";
+    } catch (_) {
+      errorMessage = "Failed to download PDF";
+    }
+
+    throw Exception(
+      "$errorMessage (${response.statusCode})",
+    );
+  }
+
+
+  static Future<void> deleteCategory({
+    required int categoryId,
+  }) async {
+    final uri = Uri.parse(
+      "$baseUrl/categories/$categoryId",
+    );
+
+    final accessToken =
+    await AuthService.getAccessToken();
+
+    if (accessToken == null ||
+        accessToken.isEmpty) {
+      throw Exception(
+        "Admin login token not found",
+      );
+    }
+
+    final response = await http.delete(
+      uri,
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $accessToken",
+      },
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception(
+        "Invalid server response: ${response.body}",
+      );
+    }
+
+    if (response.statusCode == 200) {
+      return;
+    }
+
+    throw Exception(
+      data["detail"] ??
+          "Failed to delete category",
+    );
+  }
+
+
+  static Future<List<Map<String, dynamic>>>
+  getNotifications() async {
+
+    final accessToken =
+    await AuthService.getAccessToken();
+
+    if (accessToken == null ||
+        accessToken.isEmpty) {
+      throw Exception("Login token not found");
+    }
+
+    final response = await http.get(
+      Uri.parse(
+        "$baseUrl/notifications",
+      ),
+      headers: {
+        "Authorization":
+        "Bearer $accessToken",
+      },
+    );
+
+    final data =
+    jsonDecode(response.body);
+
+    if (response.statusCode == 200) {
+
+      return List<Map<String, dynamic>>.from(
+        data["notifications"] ?? [],
+      );
+    }
+
+    throw Exception(
+      data["detail"] ??
+          "Failed to load notifications",
+    );
+  }
+
+
+  static Future<int>
+  getUnreadNotificationCount() async {
+
+    final accessToken =
+    await AuthService.getAccessToken();
+
+    if (accessToken == null ||
+        accessToken.isEmpty) {
+      throw Exception("Login token not found");
+    }
+
+    final response = await http.get(
+      Uri.parse(
+        "$baseUrl/notifications/unread-count",
+      ),
+      headers: {
+        "Authorization":
+        "Bearer $accessToken",
+      },
+    );
+
+    final data =
+    jsonDecode(response.body);
+
+    if (response.statusCode == 200) {
+
+      return int.tryParse(
+        data["unread_count"].toString(),
+      ) ??
+          0;
+    }
+
+    throw Exception(
+      data["detail"] ??
+          "Failed to get notification count",
+    );
+  }
+
+
+  // ============================================================
+// MARK NOTIFICATION AS READ
+// ============================================================
+
+  static Future<void> markNotificationAsRead(
+      int notificationId,
+      ) async {
+
+    final accessToken =
+    await AuthService.getAccessToken();
+
+    if (accessToken == null ||
+        accessToken.isEmpty) {
+      throw Exception(
+        "Login token not found",
+      );
+    }
+
+    final response = await http.patch(
+      Uri.parse(
+        "$baseUrl/notifications/$notificationId/read",
+      ),
+      headers: {
+        "Authorization":
+        "Bearer $accessToken",
+      },
+    );
+
+    if (response.statusCode != 200) {
+
+      Map<String, dynamic> data;
+
+      try {
+        data = jsonDecode(response.body);
+      } catch (_) {
+        throw Exception(
+          "Invalid server response: ${response.body}",
+        );
+      }
+
+      throw Exception(
+        data["detail"] ??
+            "Failed to mark notification as read",
+      );
+    }
+  }
+
+
+// ---------------------------------------------------
+// Delete / Stop Selling Product
+// ---------------------------------------------------
+
+  static Future<void> deleteProduct({
+    required int productId,
+  }) async {
+    final accessToken = await AuthService.getAccessToken();
+
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception("Login token not found");
+    }
+
+    final response = await http.delete(
+      Uri.parse(
+        "$baseUrl/products/$productId",
+      ),
+      headers: {
+        "Authorization": "Bearer $accessToken",
+      },
+    );
+
+    if (response.statusCode != 200) {
+      Map<String, dynamic> data;
+
+      try {
+        data = jsonDecode(response.body);
+      } catch (_) {
+        throw Exception(
+          "Invalid server response: ${response.body}",
+        );
+      }
+
+      throw Exception(
+        data["detail"] ?? "Failed to delete product",
+      );
+    }
+  }
+
+
+  static Future<Map<String, dynamic>> updateProduct({
+    required int productId,
+    required String title,
+    required String age,
+    required String description,
+    required String condition,
+    required String location,
+    required double price,
+    double? aiPrice,
+  }) async {
+    final accessToken =
+    await AuthService.getAccessToken();
+
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception("Login token not found");
+    }
+
+    final response = await http.put(
+      Uri.parse(
+        "$baseUrl/products/$productId",
+      ),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $accessToken",
+      },
+      body: jsonEncode({
+        "title": title.trim(),
+        "age": age.trim(),
+        "description": description.trim(),
+        "condition": condition.trim(),
+        "location": location.trim(),
+        "price": price,
+        "ai_price": aiPrice,
+      }),
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception(
+        "Invalid server response: ${response.body}",
+      );
+    }
+
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(data);
+    }
+
+    throw Exception(
+      data["detail"] ??
+          data["message"] ??
+          "Failed to update product",
+    );
+  }
 
 }
