@@ -7,6 +7,10 @@ import 'package:sellify/screens/AddProductScreen.dart';
 import 'package:sellify/services/api_service.dart';
 import 'package:sellify/services/auth_service.dart';
 import 'NotificationsScreen.dart';
+import 'BrowseProductDetailsScreen.dart';
+import 'CartScreen.dart';
+import 'FavoriteScreen.dart';
+import 'ChatListScreen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -27,6 +31,17 @@ class _HomeScreenState
   bool isLoadingProducts = true;
   String? productsError;
 
+
+  Set<int> favoriteProductIds = {};
+  Set<int> favoriteLoadingIds = {};
+
+
+  final TextEditingController _searchController = TextEditingController();
+  String searchQuery = '';
+
+
+
+
   @override
   void initState() {
     super.initState();
@@ -34,7 +49,7 @@ class _HomeScreenState
     WidgetsBinding.instance.addObserver(this);
 
     loadProducts();
-
+    loadFavorites();
     loadNotificationCount();
   }
 
@@ -42,6 +57,7 @@ class _HomeScreenState
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _searchController.dispose();
 
     super.dispose();
   }
@@ -238,6 +254,42 @@ class _HomeScreenState
 
 
 
+  Future<void> openBrowseProductDetails(
+      Map<String, dynamic> product,
+      ) async {
+    final productId = int.tryParse(
+      product['product_id'].toString(),
+    );
+
+    if (productId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invalid product ID'),
+        ),
+      );
+      return;
+    }
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => BrowseProductDetailsScreen(
+          productId: productId,
+          requireLogin: () => requireLogin(context),
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    // Refresh favorite IDs after returning from product details.
+    await loadFavorites();
+  }
+
+
+
+
+
   Future<void> loadNotificationCount() async {
 
     try {
@@ -270,20 +322,10 @@ class _HomeScreenState
 
 
 
+
   Future<void> loadProducts() async {
     try {
       final userId = await AuthService.getUserId();
-
-      if (userId == null || userId.isEmpty) {
-        if (!mounted) return;
-
-        setState(() {
-          isLoadingProducts = false;
-          productsError = "Please login to view products.";
-        });
-
-        return;
-      }
 
       final result = await ApiService.getProducts(
         userId: userId,
@@ -301,7 +343,7 @@ class _HomeScreenState
 
       setState(() {
         isLoadingProducts = false;
-        productsError = e.toString();
+        productsError = 'Unable to load products. Please try again.';
       });
     }
   }
@@ -309,7 +351,34 @@ class _HomeScreenState
 
 
 
- //home page
+  Future<void> loadFavorites() async {
+    try {
+      final loggedIn = await AuthService.isLoggedIn();
+
+      if (!loggedIn) return;
+
+      final favorites = await ApiService.getFavorites();
+
+      if (!mounted) return;
+
+      setState(() {
+        favoriteProductIds = favorites
+            .map((item) => int.tryParse(
+          item['product_id'].toString(),
+        ))
+            .whereType<int>()
+            .toSet();
+      });
+    } catch (e) {
+      debugPrint('Load favorites error: $e');
+    }
+  }
+
+
+
+
+
+  //home page
 
   Widget buildHomePage() {
     return ListView(
@@ -325,30 +394,30 @@ class _HomeScreenState
             ),
           ),
 
-          child: TextField(
+          child:
+          TextField(
+            controller: _searchController,
+            onChanged: (value) {
+              setState(() {
+                searchQuery = value.trim().toLowerCase();
+              });
+            },
             decoration: InputDecoration(
               hintText: "Search products...",
-
               hintStyle: TextStyle(
                 color: Colors.grey.shade500,
               ),
-
               prefixIcon: const Icon(
                 Icons.search_rounded,
                 size: 26,
               ),
-
               suffixIcon: IconButton(
-                icon: const Icon(
-                  Icons.tune_rounded,
-                ),
+                icon: const Icon(Icons.tune_rounded),
                 onPressed: () {
-
+                  // We'll implement filters later.
                 },
               ),
-
               border: InputBorder.none,
-
               contentPadding: const EdgeInsets.symmetric(
                 vertical: 16,
               ),
@@ -449,15 +518,141 @@ class _HomeScreenState
 
 //products
 
-        ...products.map(
+    if (isLoadingProducts)
+    const Padding(
+    padding: EdgeInsets.all(32),
+    child: Center(
+    child: CircularProgressIndicator(),
+    ),
+    )
+    else if (productsError != null)
+    Padding(
+    padding: const EdgeInsets.all(24),
+    child: Column(
+    children: [
+    const Icon(
+    Icons.cloud_off_outlined,
+    size: 48,
+    color: Colors.grey,
+    ),
+    const SizedBox(height: 12),
+    Text(
+    productsError!,
+    textAlign: TextAlign.center,
+    ),
+    const SizedBox(height: 12),
+    ElevatedButton(
+    onPressed: () {
+    setState(() {
+    isLoadingProducts = true;
+    productsError = null;
+    });
+    loadProducts();
+    },
+    child: const Text('Retry'),
+    ),
+    ],
+    ),
+    )
+    else if (products.isEmpty)
+    const Padding(
+    padding: EdgeInsets.all(24),
+    child: Center(
+    child: Text('No products available yet.'),
+    ),
+    )
+
+      else
+        ...products.where((product) {
+          final title = product['title']?.toString().toLowerCase() ?? '';
+          final category =
+              product['category']?.toString().toLowerCase() ?? '';
+
+          return title.contains(searchQuery) ||
+              category.contains(searchQuery);
+        }).map(
+
               (product) => ProductCard(
             product: product,
-            onAction: () {
-              requireLogin(context);
+
+            isFavorite: favoriteProductIds.contains(
+              int.tryParse(product['product_id'].toString()),
+            ),
+
+            isFavoriteLoading: favoriteLoadingIds.contains(
+              int.tryParse(product['product_id'].toString()),
+            ),
+
+            onAction: () async {
+
+              final loggedIn = await AuthService.isLoggedIn();
+
+                  if (!context.mounted) return;
+
+                  if (!loggedIn) {
+                    requireLogin(context);
+                    return;
+                  }
+
+                  final productId = int.tryParse(
+                    product['product_id'].toString(),
+                  );
+
+                  if (productId == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Invalid product ID')),
+                    );
+                    return;
+                  }
+
+                  if (favoriteLoadingIds.contains(productId)) return;
+
+                  setState(() {
+                    favoriteLoadingIds.add(productId);
+                  });
+
+                  try {
+                    if (favoriteProductIds.contains(productId)) {
+                      await ApiService.removeFavorite(productId: productId);
+
+                      if (!mounted) return;
+
+                      setState(() {
+                        favoriteProductIds.remove(productId);
+                      });
+                    } else {
+                      await ApiService.addFavorite(productId: productId);
+
+                      if (!mounted) return;
+
+                      setState(() {
+                        favoriteProductIds.add(productId);
+                      });
+                    }
+                  } catch (e) {
+                    if (!mounted) return;
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Unable to update favorite: $e'),
+                      ),
+                    );
+                  } finally {
+                    if (mounted) {
+                      setState(() {
+                        favoriteLoadingIds.remove(productId);
+                      });
+                    }
+                  }
+                },
+
+                onTap: () {
+              openBrowseProductDetails(product);
             },
           ),
         ),
-      ],
+
+    ],
     );
   }
 
@@ -596,14 +791,29 @@ class _HomeScreenState
           ),
 
           // Cart
+
           IconButton(
             tooltip: "Cart",
             icon: const Icon(
               Icons.shopping_bag_outlined,
               color: Colors.black87,
             ),
-            onPressed: () {
-              requireLogin(context);
+            onPressed: () async {
+              final loggedIn = await AuthService.isLoggedIn();
+
+              if (!context.mounted) return;
+
+              if (!loggedIn) {
+                requireLogin(context);
+                return;
+              }
+
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const CartScreen(),
+                ),
+              );
             },
           ),
 
@@ -612,11 +822,41 @@ class _HomeScreenState
       ),
 
      //body
-      body: selectedIndex == 0
-          ? buildHomePage()
-          : const ProfileScreen(),
 
-    //sell button
+
+        body: selectedIndex == 0
+            ? buildHomePage()
+            : selectedIndex == 1
+            ? FavoriteScreen(
+          requireLogin: () => requireLogin(context),
+        )
+            : selectedIndex == 2
+            ? FutureBuilder<bool>(
+          future: AuthService.isLoggedIn(),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState ==
+                ConnectionState.waiting) {
+              return const Center(
+                child: CircularProgressIndicator(),
+              );
+            }
+
+            if (snapshot.data != true) {
+              return Center(
+                child: ElevatedButton(
+                  onPressed: () => requireLogin(context),
+                  child: const Text('Login to view chats'),
+                ),
+              );
+            }
+
+            return const ChatListScreen();
+          },
+        )
+            : const ProfileScreen(),
+
+
+      //sell button
 
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: Colors.blue.shade700,
@@ -667,27 +907,30 @@ class _HomeScreenState
 
         indicatorColor: Colors.blue.shade50,
 
+
         destinations: const [
           NavigationDestination(
-            icon: Icon(
-              Icons.home_outlined,
-            ),
-            selectedIcon: Icon(
-              Icons.home_rounded,
-            ),
+            icon: Icon(Icons.home_outlined),
+            selectedIcon: Icon(Icons.home_rounded),
             label: "Home",
           ),
-
           NavigationDestination(
-            icon: Icon(
-              Icons.person_outline_rounded,
-            ),
-            selectedIcon: Icon(
-              Icons.person_rounded,
-            ),
+            icon: Icon(Icons.favorite_border_rounded),
+            selectedIcon: Icon(Icons.favorite_rounded),
+            label: "Favorites",
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.chat_bubble_outline_rounded),
+            selectedIcon: Icon(Icons.chat_bubble_rounded),
+            label: "My Chats",
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline_rounded),
+            selectedIcon: Icon(Icons.person_rounded),
             label: "Profile",
           ),
         ],
+
       ),
     );
   }
@@ -752,15 +995,27 @@ class CategoryItem extends StatelessWidget {
 
 //product card
 
+
+
 class ProductCard extends StatelessWidget {
   final Map<String, dynamic> product;
   final VoidCallback onAction;
+  final VoidCallback onTap;
+  final bool isFavorite;
+  final bool isFavoriteLoading;
+
+
 
   const ProductCard({
     super.key,
     required this.product,
     required this.onAction,
+    required this.onTap,
+    required this.isFavorite,
+    required this.isFavoriteLoading,
   });
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -779,10 +1034,11 @@ class ProductCard extends StatelessWidget {
 
       clipBehavior: Clip.antiAlias,
 
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-
-        children: [
+        child: InkWell(
+          onTap: onTap,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
          //images
           Stack(
             children: [
@@ -833,17 +1089,29 @@ class ProductCard extends StatelessWidget {
                     ],
                   ),
 
-                  child: IconButton(
-                    icon: const Icon(
-                      Icons.favorite_border_rounded,
+
+
+                  child:
+                  IconButton(
+                    icon: isFavoriteLoading
+                        ? const SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                      ),
+                    )
+                        : Icon(
+                      isFavorite
+                          ? Icons.favorite_rounded
+                          : Icons.favorite_border_rounded,
                     ),
-
-                    color: Colors.grey.shade700,
-
-                    onPressed: () {
-                      onAction();
-                    },
+                    color: isFavorite ? Colors.red : Colors.grey.shade700,
+                    onPressed: isFavoriteLoading ? null : onAction,
                   ),
+
+
+
                 ),
               ),
             ],
@@ -851,14 +1119,13 @@ class ProductCard extends StatelessWidget {
 
          //product info
 
-          Padding(
-            padding: const EdgeInsets.all(14),
+      Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
 
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-
-              children: [
-                // Category
+            // Category
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 9,
@@ -939,6 +1206,7 @@ class ProductCard extends StatelessWidget {
           ),
         ],
       ),
+        ),
     );
   }
 }

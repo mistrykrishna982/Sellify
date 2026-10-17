@@ -45,7 +45,7 @@ class CreateProductRequest(BaseModel):
     image_path: str
     ai_product_name: str | None = None
     ai_confidence: float | None = None
-    attributes: dict[int, str] = Field(default_factory=dict)
+
 
 
 router = APIRouter(
@@ -209,11 +209,6 @@ async def analyze_product(
     "category_id": ai_result["category_id"],
 
     "confidence": ai_result["confidence"],
-
-     "supported": ai_result["supported"],
-
-    "unsupported_product_name":
-        ai_result["unsupported_product_name"],
 
     "predictions": ai_result["predictions"]
 
@@ -689,77 +684,6 @@ def create_product(
                 }
             )
 
-
-            # --------------------------------------------
-            # Save dynamic attributes
-            # --------------------------------------------
-
-            for attribute_id, attribute_value in data.attributes.items():
-
-                if not attribute_value:
-                    continue
-
-
-                # ----------------------------------------
-                # Check attribute belongs to product type
-                # ----------------------------------------
-
-                attribute_result = connection.execute(
-                    text("""
-                        SELECT ATTRIBUTE_ID
-                        FROM PRODUCT_TYPE_ATTRIBUTES
-                        WHERE PRODUCT_TYPE_ID = :product_type_id
-                          AND ATTRIBUTE_ID = :attribute_id
-                    """),
-                    {
-                        "product_type_id": data.product_type_id,
-
-                        "attribute_id": attribute_id
-                    }
-                )
-
-                attribute = attribute_result.fetchone()
-
-                if not attribute:
-
-                    raise HTTPException(
-                        status_code=400,
-                        detail=(
-                            f"Invalid attribute {attribute_id} "
-                            "for selected product type"
-                        )
-                    )
-
-
-                # ----------------------------------------
-                # Save attribute value
-                # ----------------------------------------
-
-                connection.execute(
-                    text("""
-                        INSERT INTO PRODUCT_ATTRIBUTE_VALUES
-                        (
-                            P_ID,
-                            ATTRIBUTE_ID,
-                            ATTRIBUTE_VALUE
-                        )
-                        VALUES
-                        (
-                            :product_id,
-                            :attribute_id,
-                            :attribute_value
-                        )
-                    """),
-                    {
-                        "product_id": product_id,
-
-                        "attribute_id": attribute_id,
-
-                        "attribute_value": attribute_value
-                    }
-                )
-
-
         # ------------------------------------------------
         # Transaction completed
         # ------------------------------------------------
@@ -790,36 +714,43 @@ def create_product(
             detail=str(e)
         )
 
-    
 
+    
 @router.get("")
-def get_products(user_id: int):
+def get_products(user_id: int | None = None):
     try:
         with engine.connect() as connection:
+            query = """
+                SELECT
+                    p.P_ID,
+                    p.TITLE,
+                    p.DESCRIPTION,
+                    p.`CONDITION`,
+                    p.PRICE,
+                    p.AI_PRICE,
+                    p.LOCATION,
+                    c.CATEGORY_NAME,
+                    pi.IMAGE_PATH
+                FROM PRODUCTS p
+                INNER JOIN CATEGORIES c
+                    ON p.C_ID = c.C_ID
+                LEFT JOIN PRODUCT_IMAGES pi
+                    ON p.P_ID = pi.P_ID
+                WHERE p.STATUS = 'ACTIVE'
+            """
+
+            params = {}
+
+            # Exclude the current user's own listings when logged in.
+            if user_id is not None:
+                query += " AND p.U_ID != :user_id"
+                params["user_id"] = user_id
+
+            query += " ORDER BY p.CREATED_AT DESC"
+
             result = connection.execute(
-                text("""
-                    SELECT
-                        p.P_ID,
-                        p.TITLE,
-                        p.DESCRIPTION,
-                        p.`CONDITION`,
-                        p.PRICE,
-                        p.AI_PRICE,
-                        p.LOCATION,
-                        c.CATEGORY_NAME,
-                        pi.IMAGE_PATH
-                    FROM PRODUCTS p
-                    INNER JOIN CATEGORIES c
-                        ON p.C_ID = c.C_ID
-                    LEFT JOIN PRODUCT_IMAGES pi
-                        ON p.P_ID = pi.P_ID
-                    WHERE p.STATUS = 'ACTIVE'
-                      AND p.U_ID != :user_id
-                    ORDER BY p.CREATED_AT DESC
-                """),
-                {
-                    "user_id": user_id
-                }
+                text(query),
+                params
             )
 
             products = []
@@ -831,7 +762,11 @@ def get_products(user_id: int):
                     "description": row.DESCRIPTION,
                     "condition": row.CONDITION,
                     "price": float(row.PRICE),
-                    "ai_price": float(row.AI_PRICE),
+                    "ai_price": (
+                        float(row.AI_PRICE)
+                        if row.AI_PRICE is not None
+                        else None
+                    ),
                     "location": row.LOCATION,
                     "category": row.CATEGORY_NAME,
                     "image_path": row.IMAGE_PATH
@@ -1073,27 +1008,16 @@ def delete_product(
         )
 
 
-
-
 # ---------------------------------------------------
-# API: Get Single Product Details
+# API: Get Single Product Details (Public)
 # ---------------------------------------------------
 
 @router.get("/{product_id}")
-def get_product_details(
-    product_id: int,
-    current_user=Depends(get_current_user)
-):
+def get_product_details(product_id: int):
     try:
-
-        user_id = current_user["user_id"]
-
         with engine.connect() as connection:
 
-            # =================================================
-            # 1. GET PRODUCT
-            # =================================================
-
+            # 1. Get active product details
             product_result = connection.execute(
                 text("""
                     SELECT
@@ -1115,21 +1039,15 @@ def get_product_details(
                         c.CATEGORY_NAME,
                         pt.PRODUCT_TYPE_NAME
                     FROM PRODUCTS p
-
                     INNER JOIN CATEGORIES c
                         ON p.C_ID = c.C_ID
-
                     INNER JOIN PRODUCT_TYPES pt
                         ON p.PRODUCT_TYPE_ID = pt.PRODUCT_TYPE_ID
-
                     WHERE p.P_ID = :product_id
-                      AND p.U_ID = :user_id
+                      AND p.STATUS = 'ACTIVE'
                     LIMIT 1
                 """),
-                {
-                    "product_id": product_id,
-                    "user_id": user_id,
-                }
+                {"product_id": product_id}
             )
 
             product = product_result.mappings().first()
@@ -1140,10 +1058,7 @@ def get_product_details(
                     detail="Product not found"
                 )
 
-            # =================================================
-            # 2. GET ALL PRODUCT IMAGES
-            # =================================================
-
+            # 2. Get all images for this product
             image_result = connection.execute(
                 text("""
                     SELECT
@@ -1153,95 +1068,50 @@ def get_product_details(
                     WHERE P_ID = :product_id
                     ORDER BY PI_ID ASC
                 """),
-                {
-                    "product_id": product_id,
-                }
+                {"product_id": product_id}
             )
 
-            images = []
-
-            for image in image_result.mappings().all():
-
-                images.append({
+            images = [
+                {
                     "image_id": image["PI_ID"],
                     "image_path": image["IMAGE_PATH"],
-                })
-
-            # =================================================
-            # 3. GET PRODUCT ATTRIBUTES
-            # =================================================
-
-            attribute_result = connection.execute(
-                text("""
-                    SELECT
-                        P_ID,
-                        ATTRIBUTE_ID,
-                        ATTRIBUTE_VALUE
-                    FROM PRODUCT_ATTRIBUTE_VALUES
-                    WHERE P_ID = :product_id
-                """),
-                {
-                    "product_id": product_id,
                 }
-            )
+                for image in image_result.mappings().all()
+            ]
 
-            attributes = []
-
-            for attribute in attribute_result.mappings().all():
-
-                attributes.append({
-                    "attribute_id": attribute["ATTRIBUTE_ID"],
-                    "value": attribute["ATTRIBUTE_VALUE"],
-                })
-
-            # =================================================
-            # 4. RETURN COMPLETE PRODUCT
-            # =================================================
-
+            # 3. Return product details
             return {
                 "product": {
                     "product_id": product["P_ID"],
                     "user_id": product["U_ID"],
-
                     "category_id": product["C_ID"],
                     "category": product["CATEGORY_NAME"],
-
-                    "product_type_id":
-                        product["PRODUCT_TYPE_ID"],
-                    "product_type":
-                        product["PRODUCT_TYPE_NAME"],
-
+                    "product_type_id": product["PRODUCT_TYPE_ID"],
+                    "product_type": product["PRODUCT_TYPE_NAME"],
                     "title": product["TITLE"],
                     "description": product["DESCRIPTION"],
                     "condition": product["CONDITION"],
-
                     "price": float(product["PRICE"]),
-                    "ai_price":
+                    "ai_price": (
                         float(product["AI_PRICE"])
                         if product["AI_PRICE"] is not None
-                        else None,
-
+                        else None
+                    ),
                     "location": product["LOCATION"],
-
-                    "ai_confidence":
+                    "ai_confidence": (
                         float(product["AI_CONFIDENCE"])
                         if product["AI_CONFIDENCE"] is not None
-                        else None,
-
+                        else None
+                    ),
                     "ai_analyzed": product["AI_ANALYZED"],
-                    "ai_product_name":
-                        product["AI_PRODUCT_NAME"],
-
+                    "ai_product_name": product["AI_PRODUCT_NAME"],
                     "status": product["STATUS"],
-
-                    "created_at":
+                    "created_at": (
                         str(product["CREATED_AT"])
                         if product["CREATED_AT"] is not None
-                        else None,
-
+                        else None
+                    ),
                     "images": images,
-
-                    "attributes": attributes,
                 }
             }
 
@@ -1249,13 +1119,10 @@ def get_product_details(
         raise
 
     except Exception as e:
-
         raise HTTPException(
             status_code=500,
             detail=str(e)
         )
-
-
 
 
 # ---------------------------------------------------

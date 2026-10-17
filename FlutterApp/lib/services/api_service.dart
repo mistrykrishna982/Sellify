@@ -896,11 +896,22 @@ class ApiService {
     );
   }
 
+
   static Future<List<Map<String, dynamic>>> getProducts({
-    required String userId,
+    String? userId,
   }) async {
+    final queryParameters = <String, String>{};
+
+    if (userId != null && userId.isNotEmpty) {
+      queryParameters['user_id'] = userId;
+    }
+
     final uri = Uri.parse(
-      "$baseUrl/products?user_id=$userId",
+      '$baseUrl/products',
+    ).replace(
+      queryParameters: queryParameters.isEmpty
+          ? null
+          : queryParameters,
     );
 
     final response = await http.get(uri);
@@ -908,19 +919,18 @@ class ApiService {
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
 
-      final List products = data["products"] ?? [];
+      final List products = data['products'] ?? [];
 
       return products
           .map(
-            (product) =>
-        Map<String, dynamic>.from(product),
+            (product) => Map<String, dynamic>.from(product),
       )
           .toList();
     }
 
     throw Exception(
-      "Failed to load products: "
-          "${response.statusCode} - ${response.body}",
+      'Failed to load products: '
+          '${response.statusCode} - ${response.body}',
     );
   }
 
@@ -1003,6 +1013,29 @@ class ApiService {
           "Failed to load product details",
     );
   }
+
+
+
+  static Future<Map<String, dynamic>> getProductDetails({
+    required int productId,
+  }) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/products/$productId'),
+    );
+
+    final data = jsonDecode(response.body);
+
+    if (response.statusCode == 200) {
+      return Map<String, dynamic>.from(data['product']);
+    }
+
+    throw Exception(
+      data['detail'] ?? 'Failed to load product details',
+    );
+  }
+
+
+
 
 
 
@@ -2038,5 +2071,378 @@ class ApiService {
           "Failed to update product",
     );
   }
+
+
+
+  // ============================================================
+  // ADD PRODUCT TO CART
+  // ============================================================
+
+  static Future<Map<String, dynamic>> addToCart({
+    required int productId,
+  }) async {
+    final accessToken = await AuthService.getAccessToken();
+
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception("Please login to add products to cart");
+    }
+
+    final response = await http.post(
+      Uri.parse("$baseUrl/cart/items/$productId"),
+      headers: {
+        "Authorization": "Bearer $accessToken",
+      },
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception("Invalid server response: ${response.body}");
+    }
+
+    if (response.statusCode == 200 ||
+        response.statusCode == 201) {
+      return Map<String, dynamic>.from(data);
+    }
+
+    throw Exception(
+      data["detail"] ?? "Failed to add product to cart",
+    );
+  }
+
+
+
+  static Future<List<Map<String, dynamic>>> getCartItems() async {
+    final accessToken = await AuthService.getAccessToken();
+
+
+    if (accessToken == null || accessToken.isEmpty) {
+    throw Exception("Please login to view your cart");
+    }
+
+    final response = await http.get(
+    Uri.parse("$baseUrl/cart/items"),
+    headers: {
+    "Authorization": "Bearer $accessToken",
+    },
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+    data = jsonDecode(response.body);
+    } catch (_) {
+    throw Exception("Invalid server response: ${response.body}");
+    }
+
+    if (response.statusCode == 200) {
+    return List<Map<String, dynamic>>.from(
+    data["items"] ?? [],
+    );
+    }
+
+    throw Exception(
+    data["detail"] ?? "Failed to load cart items",
+    );
+
+    }
+
+
+
+  static Future<Map<String, dynamic>> addFavorite({
+    required int productId,
+  }) async {
+    final accessToken = await AuthService.getAccessToken();
+
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception('Please login to add favorites');
+    }
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/favorites/$productId'),
+      headers: {
+        'Authorization': 'Bearer $accessToken',
+      },
+    );
+
+    final Map<String, dynamic> data = jsonDecode(response.body);
+
+    if (response.statusCode == 200) {
+      return data;
+    }
+
+    throw Exception(
+      data['detail'] ?? 'Failed to add favorite',
+    );
+  }
+
+  static Future<Map<String, dynamic>> removeFavorite({
+    required int productId,
+  }) async {
+    final accessToken = await AuthService.getAccessToken();
+
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception('Please login to remove favorites');
+    }
+
+    final response = await http.delete(
+      Uri.parse('$baseUrl/favorites/$productId'),
+      headers: {
+        'Authorization': 'Bearer $accessToken',
+      },
+    );
+
+    final Map<String, dynamic> data = jsonDecode(response.body);
+
+    if (response.statusCode == 200) {
+      return data;
+    }
+
+    throw Exception(
+      data['detail'] ?? 'Failed to remove favorite',
+    );
+  }
+
+  static Future<List<Map<String, dynamic>>> getFavorites() async {
+    final accessToken = await AuthService.getAccessToken();
+
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception('Please login to view favorites');
+    }
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/favorites'),
+      headers: {
+        'Authorization': 'Bearer $accessToken',
+      },
+    );
+
+    final Map<String, dynamic> data = jsonDecode(response.body);
+
+    if (response.statusCode == 200) {
+      return List<Map<String, dynamic>>.from(
+        data['items'] ?? [],
+      );
+    }
+
+    throw Exception(
+      data['detail'] ?? 'Failed to load favorites',
+    );
+  }
+
+
+
+
+  // ============================================================
+  // CHAT API
+  // ============================================================
+
+  static Future<Map<String, dynamic>> createOrGetChat({
+    required int productId,
+  }) async {
+    final accessToken = await AuthService.getAccessToken();
+
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception("Please login to chat with the seller");
+    }
+
+    final response = await http.post(
+      Uri.parse("$baseUrl/chats/product/$productId"),
+      headers: {
+        "Authorization": "Bearer $accessToken",
+      },
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception("Invalid server response: ${response.body}");
+    }
+
+    if (response.statusCode == 200 ||
+        response.statusCode == 201) {
+      return Map<String, dynamic>.from(data["chat"]);
+    }
+
+    throw Exception(
+      data["detail"] ?? "Failed to open chat",
+    );
+  }
+
+  static Future<List<Map<String, dynamic>>> getChatMessages({
+    required int chatId,
+  }) async {
+    final accessToken = await AuthService.getAccessToken();
+
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception("Please login to view messages");
+    }
+
+    final response = await http.get(
+      Uri.parse("$baseUrl/chats/$chatId/messages"),
+      headers: {
+        "Authorization": "Bearer $accessToken",
+      },
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception("Invalid server response: ${response.body}");
+    }
+
+    if (response.statusCode == 200) {
+      return List<Map<String, dynamic>>.from(
+        data["messages"] ?? [],
+      );
+    }
+
+    throw Exception(data["detail"] ?? "Failed to load messages");
+  }
+
+  static Future<Map<String, dynamic>> sendChatMessage({
+    required int chatId,
+    required String message,
+  }) async {
+    final accessToken = await AuthService.getAccessToken();
+
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception("Please login to send messages");
+    }
+
+    final response = await http.post(
+      Uri.parse("$baseUrl/chats/$chatId/messages"),
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer $accessToken",
+      },
+      body: jsonEncode({
+        "message": message.trim(),
+      }),
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception("Invalid server response: ${response.body}");
+    }
+
+    if (response.statusCode == 200 ||
+        response.statusCode == 201) {
+      return Map<String, dynamic>.from(data);
+    }
+
+    throw Exception(data["detail"] ?? "Failed to send message");
+  }
+
+  static Future<List<Map<String, dynamic>>> getChats() async {
+    final accessToken = await AuthService.getAccessToken();
+
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception("Please login to view chats");
+    }
+
+    final response = await http.get(
+      Uri.parse("$baseUrl/chats"),
+      headers: {
+        "Authorization": "Bearer $accessToken",
+      },
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception("Invalid server response: ${response.body}");
+    }
+
+    if (response.statusCode == 200) {
+      return List<Map<String, dynamic>>.from(
+        data["chats"] ?? [],
+      );
+    }
+
+    throw Exception(data["detail"] ?? "Failed to load chats");
+  }
+
+
+
+
+  static Future<void> unsendChatMessage({
+    required int chatId,
+    required int messageId,
+  }) async {
+    final token = await AuthService.getAccessToken();
+
+    if (token == null || token.isEmpty) {
+      throw Exception('Please log in again.');
+    }
+
+    final response = await http.delete(
+      Uri.parse(
+        '$baseUrl/chats/$chatId/messages/$messageId',
+      ),
+      headers: {
+        'Authorization': 'Bearer $token',
+      },
+    );
+
+    if (response.statusCode != 200) {
+      String message = 'Failed to unsend message.';
+
+      try {
+        final data = jsonDecode(response.body);
+        message = data['detail'] ?? message;
+      } catch (_) {
+        // Keep the default error message.
+      }
+
+      throw Exception(message);
+    }
+  }
+
+
+
+  static Future<List<dynamic>> getAdminUsers() async {
+    final accessToken = await AuthService.getAccessToken();
+
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception('Please login to view users');
+    }
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/admin/users'),
+      headers: {
+        'Authorization': 'Bearer $accessToken',
+      },
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception('Invalid server response: ${response.body}');
+    }
+
+    if (response.statusCode == 200) {
+      return List<dynamic>.from(data['users'] ?? []);
+    }
+
+    throw Exception(
+      data['detail'] ?? 'Failed to load users',
+    );
+  }
+
+
 
 }

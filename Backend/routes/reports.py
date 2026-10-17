@@ -34,7 +34,6 @@ ALLOWED_REPORT_TABLES = [
     "USERS",
     "PRODUCTS",
     "PRODUCT_IMAGES",
-    "UNSUPPORTED_PRODUCTS",
 ]
 
 
@@ -42,7 +41,6 @@ REPORT_DATE_COLUMNS = {
     "USERS": "CREATED_AT",
     "PRODUCTS": "CREATED_AT",
     "PRODUCT_IMAGES": "CREATED_AT",
-    "UNSUPPORTED_PRODUCTS": "CREATED_AT",
 }
 @router.get("/tables")
 def get_report_tables(

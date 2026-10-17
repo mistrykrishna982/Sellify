@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../services/api_service.dart';
-import 'ManageProductTypeAttributesScreen.dart';
+import 'ManageProductTypeDetailsScreen.dart';
 
 class ManageProductTypesScreen extends StatefulWidget {
   final int categoryId;
@@ -328,11 +328,16 @@ class _ManageProductTypesScreenState
                     context,
                     MaterialPageRoute(
                       builder: (context) =>
-                          ManageProductTypeAttributesScreen(
+                          ManageProductTypeDetailsScreen(
                             productTypeId:
-                            productType["product_type_id"],
+                            int.parse(productType["product_type_id"].toString()),
                             productTypeName:
                             productType["product_type_name"].toString(),
+                            categoryName:
+                            productType["category_name"]?.toString() ??
+                                widget.categoryName,
+                            aiDescription:
+                            productType["ai_description"]?.toString() ?? "",
                           ),
                     ),
                   );

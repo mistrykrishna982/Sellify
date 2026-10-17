@@ -348,108 +348,6 @@ def find_product_type_from_caption(
 
 
 # ---------------------------------------------------
-# Get Clean Unsupported Product Name
-# ---------------------------------------------------
-
-def get_unsupported_product_name(caption: str):
-
-    caption = caption.lower().strip()
-
-    # ------------------------------------------------
-    # Canonical marketplace product names
-    # ------------------------------------------------
-
-    product_aliases = {
-
-        "Washing Machine": [
-            "washing machine",
-            "washer",
-            "front load washer",
-            "front-load washer",
-            "top load washer",
-            "top-load washer",
-            "front load washing machine",
-            "front-load washing machine",
-            "top load washing machine",
-            "top-load washing machine",
-        ],
-
-        "Printer": [
-            "printer",
-        ],
-
-        "Projector": [
-            "projector",
-        ],
-
-        "Air Purifier": [
-            "air purifier",
-        ],
-
-        "Television": [
-            "television",
-            "tv",
-        ],
-
-        "Microwave": [
-            "microwave",
-        ],
-
-        "Refrigerator": [
-            "refrigerator",
-            "fridge",
-        ],
-
-        "Vacuum Cleaner": [
-            "vacuum cleaner",
-            "vacuum",
-        ],
-
-        "Iron": [
-            "iron",
-        ],
-
-        "Keyboard": [
-            "keyboard",
-        ],
-
-        "Mouse": [
-            "mouse",
-        ],
-
-        "Monitor": [
-            "monitor",
-        ],
-
-        "Tablet": [
-            "tablet",
-        ],
-
-        "Gaming Console": [
-            "gaming console",
-        ],
-    }
-
-    # ------------------------------------------------
-    # Find canonical product name
-    # ------------------------------------------------
-
-    for product_name, aliases in product_aliases.items():
-
-        for alias in aliases:
-
-            if alias in caption:
-
-                return product_name
-
-    # ------------------------------------------------
-    # If nothing matches, do not save a raw BLIP
-    # caption as the Product Type.
-    # ------------------------------------------------
-
-    return "Unknown"
-
-# ---------------------------------------------------
 # Find Product Type From Prompt
 # ---------------------------------------------------
 
@@ -505,98 +403,52 @@ def analyze_product_image(image_path: str):
 
     try:
 
-        # ------------------------------------------------
         # 1. Check image exists
-        # ------------------------------------------------
-
         path = Path(image_path)
 
         if not path.is_absolute():
             path = BASE_DIR / path
 
         if not path.exists():
-
             raise FileNotFoundError(
                 f"Image not found: {path}"
             )
 
-
-        # ------------------------------------------------
         # 2. Open image
-        # ------------------------------------------------
-
         image = Image.open(path).convert("RGB")
 
-
-        # ------------------------------------------------
         # 3. Generate BLIP caption
-        # ------------------------------------------------
-
-        caption = generate_product_caption(
-            str(path)
-        )
+        caption = generate_product_caption(str(path))
 
         print("AI caption:", caption)
 
-
-        # ------------------------------------------------
         # 4. Get product types from database
-        # ------------------------------------------------
-
         product_types = get_sellify_product_types()
 
-
         if not product_types:
-
             return {
-
-                "supported": False,
-
                 "category_id": None,
-
                 "category": None,
-
                 "product_type_id": None,
-
                 "product_type": None,
-
                 "confidence": 0,
-
-                "unsupported_product_name":
-                    get_unsupported_product_name(caption),
-
                 "caption": caption,
-
                 "predictions": []
-
             }
 
-
-        # ------------------------------------------------
         # 5. Build prompts
-        # ------------------------------------------------
-
         prompts = build_product_type_prompts(
             product_types
         )
 
-
-        # ------------------------------------------------
         # 6. Run CLIP
-        # ------------------------------------------------
-
         results = classifier(
             image,
             candidate_labels=prompts
         )
 
-
-        # ------------------------------------------------
         # 7. Convert CLIP results to Sellify format
-        # ------------------------------------------------
-
         predictions = []
-
 
         for result in results:
 
@@ -605,13 +457,10 @@ def analyze_product_image(image_path: str):
                 product_types
             )
 
-
             if matched_product is None:
                 continue
 
-
             predictions.append({
-
                 "product_type_id":
                     matched_product["product_type_id"],
 
@@ -626,161 +475,64 @@ def analyze_product_image(image_path: str):
 
                 "score":
                     float(result["score"])
-
             })
 
-
-        # ------------------------------------------------
         # 8. No valid prediction
-        # ------------------------------------------------
-
         if not predictions:
-
             return {
-
-                "supported": False,
-
                 "category_id": None,
-
                 "category": None,
-
                 "product_type_id": None,
-
                 "product_type": None,
-
                 "confidence": 0,
-
-                "unsupported_product_name":
-                    get_unsupported_product_name(caption),
-
                 "caption": caption,
-
                 "predictions": []
-
             }
 
-
-        # ------------------------------------------------
         # 9. Best prediction
-        # ------------------------------------------------
-
         best = predictions[0]
-
         confidence = best["score"]
-
 
         print(
             "Best product type:",
             best["product_type_name"]
         )
 
-        print(
-            "Confidence:",
-            confidence
-        )
+        print("Confidence:", confidence)
 
-
-        # ------------------------------------------------
-        # 10. Check supported / unsupported
-        # ------------------------------------------------
-
+        # 10. Low-confidence result
         if confidence < SUPPORTED_THRESHOLD:
-
-            unsupported_name = (
-                get_unsupported_product_name(
-                    caption
-                )
-            )
-
-
             return {
-
-                "supported": False,
-
                 "category_id": None,
-
                 "category": None,
-
                 "product_type_id": None,
-
                 "product_type": None,
-
                 "confidence": confidence,
-
-                "unsupported_product_name":
-                    unsupported_name,
-
                 "caption": caption,
-
                 "predictions": predictions
-
             }
 
-
-        # ------------------------------------------------
-        # 11. Supported product
-        # ------------------------------------------------
-
+        # 11. Successful product classification
         return {
-
-            "supported": True,
-
-            "category_id":
-                best["category_id"],
-
-            "category":
-                best["category_name"],
-
-            "product_type_id":
-                best["product_type_id"],
-
-            "product_type":
-                best["product_type_name"],
-
-            "confidence":
-                confidence,
-
-            "unsupported_product_name":
-                None,
-
-            "caption":
-                caption,
-
-            "predictions":
-                predictions
-
+            "category_id": best["category_id"],
+            "category": best["category_name"],
+            "product_type_id": best["product_type_id"],
+            "product_type": best["product_type_name"],
+            "confidence": confidence,
+            "caption": caption,
+            "predictions": predictions
         }
-
 
     except Exception as e:
 
-        print(
-            "AI analysis error:",
-            e
-        )
-
+        print("AI analysis error:", e)
 
         return {
-
-            "supported": False,
-
             "category_id": None,
-
             "category": None,
-
             "product_type_id": None,
-
             "product_type": None,
-
             "confidence": 0,
-
-            "unsupported_product_name":
-                "Unknown",
-
-            "caption":
-                "",
-
-            "predictions":
-                []
-
+            "caption": "",
+            "predictions": []
         }

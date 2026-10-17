@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import 'ManageCategoriesScreen.dart';
-import 'ManageUnsupportedProductsScreen.dart';
+import 'ManageUsersScreen.dart';
 import 'ManageClassificationRequestsScreen.dart';
 import 'AdminReportScreen.dart';
+import '../LoginScreen.dart';
+import '/services/auth_service.dart';
 
 
 class AdminDashboardScreen extends StatelessWidget {
@@ -23,6 +25,56 @@ class AdminDashboardScreen extends StatelessWidget {
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0,
+        actions: [
+          IconButton(
+            tooltip: "Logout",
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              final shouldLogout = await showDialog<bool>(
+                context: context,
+                builder: (dialogContext) {
+                  return AlertDialog(
+                    title: const Text("Logout"),
+                    content: const Text(
+                      "Are you sure you want to logout?",
+                    ),
+                    actions: [
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pop(dialogContext, false);
+                        },
+                        child: const Text("CANCEL"),
+                      ),
+                      ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(dialogContext, true);
+                        },
+                        child: const Text("LOGOUT"),
+                      ),
+                    ],
+                  );
+                },
+              );
+
+              if (shouldLogout != true || !context.mounted) {
+                return;
+              }
+
+              await AuthService.logout();
+
+              if (!context.mounted) return;
+
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const LoginScreen(),
+                ),
+                    (route) => false,
+              );
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
 
       body: SafeArea(
@@ -90,20 +142,6 @@ class AdminDashboardScreen extends StatelessWidget {
                     ),
 
                     _dashboardCard(
-                      icon: Icons.report_problem_outlined,
-                      title: "Unsupported Products",
-                      onTap: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                            const ManageUnsupportedProductsScreen(),
-                          ),
-                        );
-                      },
-                    ),
-
-                    _dashboardCard(
                       icon: Icons.assessment_outlined,
                       title: "Generate Report",
                       onTap: () {
@@ -116,6 +154,21 @@ class AdminDashboardScreen extends StatelessWidget {
                         );
                       },
                     ),
+
+
+                    _dashboardCard(
+                      icon: Icons.people_alt_outlined,
+                      title: "Manage Users",
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const ManageUsersScreen(),
+                          ),
+                        );
+                      },
+                    ),
+
 
                   ],
                 ),
