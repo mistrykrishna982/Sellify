@@ -6,7 +6,7 @@ import 'auth_service.dart';
 
 
 class ApiService {
-  static const String baseUrl = "http://10.210.212.48:8000";
+  static const String baseUrl = "http://10.202.67.48:8000";
 
   static Future<Map<String, dynamic>> register({
     required String name,
@@ -2412,6 +2412,7 @@ class ApiService {
 
 
 
+
   static Future<List<dynamic>> getAdminUsers() async {
     final accessToken = await AuthService.getAccessToken();
 
@@ -2440,6 +2441,44 @@ class ApiService {
 
     throw Exception(
       data['detail'] ?? 'Failed to load users',
+    );
+  }
+
+
+
+
+  static Future<List<Map<String, dynamic>>> getAdminUserProducts({
+    required int userId,
+  }) async {
+    final accessToken = await AuthService.getAccessToken();
+
+    if (accessToken == null || accessToken.isEmpty) {
+      throw Exception('Please login to view user products');
+    }
+
+    final response = await http.get(
+      Uri.parse('$baseUrl/admin/users/$userId/products'),
+      headers: {
+        'Authorization': 'Bearer $accessToken',
+      },
+    );
+
+    Map<String, dynamic> data;
+
+    try {
+      data = jsonDecode(response.body);
+    } catch (_) {
+      throw Exception('Invalid server response: ${response.body}');
+    }
+
+    if (response.statusCode == 200) {
+      return List<Map<String, dynamic>>.from(
+        data['products'] ?? [],
+      );
+    }
+
+    throw Exception(
+      data['detail'] ?? 'Failed to load user products',
     );
   }
 

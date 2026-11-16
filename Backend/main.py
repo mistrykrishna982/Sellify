@@ -14,6 +14,7 @@ from routes.cart import router as cart_router
 from routes import favorites
 from routes.chat import router as chat_router
 from routes.admin_users import router as admin_users_router
+from routes.admin_user_products import router as admin_user_products_router
 
 
 app = FastAPI(
@@ -39,6 +40,8 @@ app.include_router(cart_router)
 app.include_router(favorites.router)
 app.include_router(chat_router)
 app.include_router(admin_users_router)
+app.include_router(admin_user_products_router)
+
 
 
 # Uploaded files

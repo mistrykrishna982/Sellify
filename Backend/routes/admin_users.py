@@ -24,21 +24,21 @@ def list_users(
 
     with engine.connect() as connection:
         result = connection.execute(
-            text("""
-                SELECT
-                    u.U_ID AS user_id,
-                    u.U_NAME AS name,
-                    u.EMAIL AS email,
-                    u.ROLE AS role,
-                    p.PHONE AS phone,
-                    p.LOCATION AS location,
-                    p.PROFILE_IMAGE AS profile_image
-                FROM USERS u
-                LEFT JOIN USER_PROFILES p
-                    ON p.U_ID = u.U_ID
-                ORDER BY u.U_ID DESC
-            """)
-        )
+    text("""
+        SELECT
+            u.U_ID AS user_id,
+            u.U_NAME AS name,
+            u.EMAIL AS email,
+            u.ROLE AS role,
+            up.PHONE AS phone,
+            up.LOCATION AS location,
+            up.PROFILE_IMAGE AS profile_image
+        FROM USERS u
+        LEFT JOIN USER_PROFILES up ON up.U_ID = u.U_ID
+        WHERE u.ROLE != 'ADMIN'
+        ORDER BY u.U_ID DESC
+    """)
+)
 
         users = [
             dict(row)

@@ -31,9 +31,18 @@ class _EditProductClassificationScreenState
   final TextEditingController productTypeController =
   TextEditingController();
 
+// Existing categories from database
+  List<Map<String, dynamic>> categories = [];
+
+  String? selectedCategory;
+  bool isOtherCategory = false;
+  bool isLoadingCategories = true;
+
   bool isSubmitting = false;
 
+
   String? errorMessage;
+
 
   @override
   void initState() {
@@ -45,18 +54,56 @@ class _EditProductClassificationScreenState
     final String aiProductType =
     (widget.aiResult["product_type"] ?? "").toString();
 
-    if (aiCategory.isNotEmpty &&
-        aiCategory.toUpperCase() != "UNKNOWN") {
-
-      categoryController.text = aiCategory;
-    }
-
     if (aiProductType.isNotEmpty &&
         aiProductType.toUpperCase() != "UNKNOWN") {
-
       productTypeController.text = aiProductType;
     }
+
+    loadCategories(aiCategory);
   }
+
+
+
+  Future<void> loadCategories(String aiCategory) async {
+    try {
+      final result = await ApiService.getCategories();
+
+      if (!mounted) return;
+
+      final names = result
+          .map((category) => category["category_name"].toString())
+          .toList();
+
+      final matchingCategory = names.where(
+            (name) => name.toLowerCase() == aiCategory.toLowerCase(),
+      );
+
+      setState(() {
+        categories = result;
+
+        if (matchingCategory.isNotEmpty) {
+          selectedCategory = matchingCategory.first;
+          isOtherCategory = false;
+        } else if (aiCategory.isNotEmpty &&
+            aiCategory.toUpperCase() != "UNKNOWN") {
+          selectedCategory = "Other";
+          isOtherCategory = true;
+          categoryController.text = aiCategory;
+        }
+
+        isLoadingCategories = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        isLoadingCategories = false;
+        errorMessage = "Failed to load categories: $e";
+      });
+    }
+  }
+
+
 
   @override
   void dispose() {
@@ -73,8 +120,9 @@ class _EditProductClassificationScreenState
 
   Future<void> submitClassificationRequest() async {
 
-    final String category =
-    categoryController.text.trim();
+    final String category = isOtherCategory
+        ? categoryController.text.trim()
+        : selectedCategory?.trim() ?? "";
 
     final String productType =
     productTypeController.text.trim();
@@ -249,16 +297,56 @@ class _EditProductClassificationScreenState
 
             const SizedBox(height: 8),
 
-            TextField(
-              controller: categoryController,
-              textCapitalization:
-              TextCapitalization.words,
-
+            isLoadingCategories
+                ? const Center(
+              child: CircularProgressIndicator(),
+            )
+                : DropdownButtonFormField<String>(
+              value: selectedCategory,
               decoration: const InputDecoration(
-                hintText: "Enter category",
+                hintText: "Select category",
                 border: OutlineInputBorder(),
               ),
+              items: [
+                ...categories.map((category) {
+                  final name = category["category_name"].toString();
+
+                  return DropdownMenuItem<String>(
+                    value: name,
+                    child: Text(name),
+                  );
+                }),
+                const DropdownMenuItem<String>(
+                  value: "Other",
+                  child: Text("Other"),
+                ),
+              ],
+              onChanged: (value) {
+                setState(() {
+                  selectedCategory = value;
+                  isOtherCategory = value == "Other";
+
+                  if (!isOtherCategory) {
+                    categoryController.clear();
+                  }
+                });
+              },
             ),
+
+
+            if (isOtherCategory) ...[
+              const SizedBox(height: 12),
+              TextField(
+                controller: categoryController,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  hintText: "Enter new category",
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+
+
 
             const SizedBox(height: 25),
 
